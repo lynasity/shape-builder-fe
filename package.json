@@ -26,12 +26,19 @@
     "@canva/data-provider": "./sdk/data_provider",
     "@canva/design": "./sdk/design",
     "@canva/error": "./sdk/error",
+    "@canva/platform": "^1.1.0",
     "@canva/preview": "./sdk/preview",
     "@canva/user": "./sdk/user",
+    "@imgly/background-removal": "^1.5.5",
+    "@supabase/supabase-js": "^2.45.1",
     "clsx": "^1.2.1",
+    "fabric": "^6.3.0",
+    "firebase": "^10.13.0",
     "jsbarcode": "^3.11.5",
     "react": "^18.1.0",
-    "react-dom": "^18.1.0"
+    "react-dom": "^18.1.0",
+    "react-icons": "^5.3.0",
+    "react-svg": "^16.1.34"
   },
   "devDependencies": {
     "@svgr/webpack": "^8.0.1",
@@ -72,8 +79,6 @@
     "ts-node": "^10.9.1",
     "typescript": "^4.8.2",
     "url-loader": "^4.1.1",
-    "webpack": "^5.74.0",
-    "webpack-cli": "^4.10.0",
     "webpack-dev-server": "^4.10.0",
     "yargs": "^17.5.1"
   }

@@ -51,7 +51,7 @@
     "./utils/**/*",
     "./styles/**/*",
     "./node_modules/@types/**/*"
-  ],
+, "declarations/images.d.ts"  ],
   "ts-node": {
     "compilerOptions": {
       "module": "commonjs"
