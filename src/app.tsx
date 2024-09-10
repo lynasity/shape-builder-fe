@@ -180,7 +180,7 @@ export const App = () => {
 
   const fetchIconData = React.useCallback(async (token: string) => {
     try {
-      const response = await fetch("http://localhost:3000/api/icons", {
+      const response = await fetch(process.env.CANVA_BACKEND_HOST+"/api/icons", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -414,7 +414,7 @@ export const App = () => {
         keyword: keyword
       };
       const queryString = new URLSearchParams(params).toString();
-      const response = await fetch(`http://localhost:3000/api/iconsearch?${queryString}`, {
+      const response = await fetch(`${process.env.CANVA_BACKEND_HOST}/api/iconsearch?${queryString}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

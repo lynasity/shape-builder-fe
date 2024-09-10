@@ -21,7 +21,7 @@ const createSvgFill = async (
     id: iconId.toString()
   };
   const queryString = new URLSearchParams(params).toString();
-  const response = await fetch(`http://localhost:3000/api/icon?${queryString}`, {
+  const response = await fetch(`${process.env.CANVA_BACKEND_HOST}/api/icon?${queryString}`, {
     method: "GET",
     headers: {
       "Content-Type": "application/json",

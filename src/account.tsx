@@ -15,7 +15,7 @@ type user = {
 export function login(token): Promise<user> {
     return new Promise(async (resolve, reject) => {
       try {
-        const response = await fetch("http://localhost:3000/api/login", {
+        const response = await fetch(process.env.CANVA_BACKEND_HOST+"/api/login", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -40,7 +40,7 @@ export function login(token): Promise<user> {
   export function subCredits(token:string|null,type:string): Promise<user> {
     return new Promise(async (resolve, reject) => {
       try {
-        const response = await fetch("http://localhost:3000/api/subCredits", {
+        const response = await fetch(process.env.CANVA_BACKEND_HOST+"/api/subCredits", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

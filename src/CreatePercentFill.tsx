@@ -68,7 +68,7 @@ function createPercentFill(background: string,segments:segment[],fillPattern: st
     // 获取jwt
     const token = getToken()
     // 获取抠图后的图片
-    const response = await fetch("http://localhost:3000/api/cutout",{
+    const response = await fetch(process.env.CANVA_BACKEND_HOST+"/api/cutout",{
       method: "POST",
       headers:{
         "Content-Type":"application/json",
