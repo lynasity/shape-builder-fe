@@ -2,8 +2,6 @@ import {
   Button,
   Columns,
   FormField,
-  LoadingIndicator,
-  NumberInput,
   Rows,
   Select,
   Text,
@@ -13,8 +11,6 @@ import {
   Grid,
   Box,
   Title,
-  CogIcon,
-  TrashIcon,
   Slider,
   Link,
   Tabs,
@@ -22,13 +18,15 @@ import {
   Tab,
   TabPanel,
   TabPanels,
-  ArrowRightIcon,
   ArrowLeftIcon,
-  EyeIcon,
-  ChevronRightIcon,
-  ChevronLeftIcon,
   SearchInputMenu,
   VideoCard,
+  FileInputItem,
+  ClearIcon,
+  SegmentedControl,
+  Alert,
+  LoadingIndicator,
+  Switch,
 } from "@canva/app-ui-kit";
 import { addNativeElement } from "@canva/design";
 import * as React from "react";
@@ -45,10 +43,10 @@ import { getToken,setToken } from "./tokenManager";
 import {login} from "./account";
 import { subCredits } from './account';
 import { requestOpenExternalUrl } from "@canva/platform";
-import { GenIcon, IconType } from "react-icons";
-import { FaSearch, FaRegFrown } from 'react-icons/fa'; // 使用 React Icons
-import { ReactSVG } from 'react-svg';
-
+// Images, plaintext, and videos
+// import { selection } from "@canva/design";
+import { getTemporaryUrl } from "@canva/asset";
+import { useSelection } from "utils/use_selection_hook";
 
 type segment = {
   // 图例颜色，也会用在填充颜色
@@ -59,11 +57,12 @@ type segment = {
   opacity:number;
 }
 
-type svgConfig = {
-  svgUrl:string;
-  name:string;
-  color:string;
-  value:number| undefined;
+interface SvgConfig {
+  svgUrl: string;
+  name: string;
+  color: string;
+  value: number | undefined;
+  backgroundColor: string; // 添加背景色属性
 }
 
 type icon = {
@@ -82,18 +81,13 @@ const defaultSegment:segment[] =
   }
 ]
 
-const defaultSvgConfig:svgConfig=
+const defaultSvgConfig: SvgConfig =
 {
     svgUrl:"",
     name:"label",
     color: "#000000",
-    value: 40
-}
-
-const defaultIcon:icon={
-  id:1,
-  name:'heart',
-  url:'https://pub-a01e9035bbfd4133a30f27817bf35870.r2.dev/%E4%BE%BF%E6%B0%91%E4%BF%A1%E6%81%AF.svg'
+    value: 40,
+    backgroundColor: "#dbdbdb" // 设置默认背景色
 }
 
 type ImageElement = {
@@ -127,6 +121,12 @@ type user = {
 
 type CanvasElement = ImageElement | TextElement;
 
+type error = {
+  status:boolean,
+  type:string,
+  errMsg:string
+}
+
 // 根节点定义
 export const App = () => {
   // 图片自定义填充时各区域数据
@@ -138,27 +138,40 @@ export const App = () => {
   const [error, setError] = React.useState<string | boolean>(false);
   // 图片填充模式下上传的文件
   const [file,setFile] = React.useState<string| boolean>(false);
-  // 用户信息
+  // 户信息
   const [user, setUser] = React.useState<user | null>(null);
   // 用户可用额度
   const [credits, setCredits] = React.useState<number>();
-  // 控制shapefill情况下的一级和二级界面
+  // 控制shapefill情况下的一级和二界面
   const [currentPage, setCurrentPage] = React.useState('main'); // 用于跟踪当前页面
   // 创建状态用于跟踪选中的图标
-  const [selectedIcon, setSelectedIcon] = React.useState<number>(0);
+  const [selectedIcon, setSelectedIcon] = React.useState<number | null>(null);
   // 选择的 svg填充模式参数
-  const [svgConfig,setSvgConfig] = React.useState<svgConfig>(defaultSvgConfig);
+  const [svgConfig,setSvgConfig] = React.useState<SvgConfig>(defaultSvgConfig);
   // 默认获取 icon 的数据
-  const [icons, setIcons] = React.useState<icon[]>([defaultIcon]); // 初始化 iconData 状态为空数组
+  const [icons, setIcons] = React.useState<icon[]>([]); // 初始化 iconData 状态为空数组
   // 搜索列表
-  const [iconsResult, setIconsResult] = React.useState<icon[]>([defaultIcon]); // 初始化 iconData 状态为空数组
+  const [iconsResult, setIconsResult] = React.useState<icon[]>([]); // 初始化 iconData 状态为空数组
   // 在组件内部添加新的状态
   const [searchKeyword, setSearchKeyword] = React.useState('');
   const [shouldRefreshData, setShouldRefreshData] = React.useState(true);
+  const [selectedOption, setSelectedOption] = React.useState('select');
+  const [selectedIconOption, setSelectedIconOption] = React.useState('library');
   const [activeTab, setActiveTab] = React.useState<'shapefill' | 'imagefill'>('shapefill');
   const [hasSearchResults, setHasSearchResults] = React.useState(true);
-
-
+  // 添加一个新的状态来存储文件
+  const [fileName, setFileName] = React.useState<string>('');
+  const [svgName, setSvgName] = React.useState<string>('');
+  // 读取 canva 画布中选中的图片
+  const currentSelection = useSelection("image");
+  // 获取用户上传的 svg 图片
+  const [uploadedSvg, setUploadedSvg] = React.useState<File | null>(null);
+  // 初始化错误信息
+  const [sysError,setSysError] = React.useState<error>();
+  // 用户状态标识
+  const [isOffline, setIsOffline] = React.useState(false);
+  const [removeBackground, setRemoveBackground] = React.useState(false);
+  
   const addSegment = () => {
     const newSegment: segment = {
       name: "label",
@@ -170,17 +183,26 @@ export const App = () => {
   };
 
   const getUserInfo = React.useCallback(async () => {
-    const token = await auth.getCanvaUserToken();
-    setToken(token);
-    const userInfo = await login(token);
-    setUser(userInfo as any);
-    setCredits(userInfo.shape_fill_credits);
-    return token;
+    try {
+      const token = await auth.getCanvaUserToken();
+      setToken(token);
+      const userInfo = await login(token);
+      setUser(userInfo as any);
+      setCredits(userInfo.shape_fill_credits);
+      setIsOffline(false); // 重置离线状态
+      return token;
+    } catch (error) {
+      // 无法正常获取 token 时，给个空token
+      const token ='';
+      setToken(token);
+      console.error('Failed to get user info:', error);
+      setIsOffline(true); // 设置离线状态
+      return token;
+    }
   }, []);
-
   const fetchIconData = React.useCallback(async (token: string) => {
     try {
-      const response = await fetch(process.env.CANVA_BACKEND_HOST+"/api/icons", {
+      const response = await fetch("https://percentfill-backend--partfill.us-central1.hosted.app/api/icons", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -190,10 +212,20 @@ export const App = () => {
       });
       const data = await response.json();
       setIcons(data);
+      
+      // 如果有图标数据，自动选中第一个
+      if (data.length > 0) {
+        setSelectedIcon(data[0].id);
+        setSvgConfig(prevConfig => ({
+          ...prevConfig,
+          svgUrl: data[0].url
+        }));
+      }
     } catch (error) {
       console.error('Error fetching icon data:', error);
     }
   }, []);
+
 
   React.useEffect(() => {
     if (shouldRefreshData) {
@@ -209,7 +241,7 @@ export const App = () => {
   React.useEffect(() => {
     if (searchKeyword === '') {
       setIconsResult(icons);
-      setHasSearchResults(true);
+      setHasSearchResults(icons.length > 0);
     }
   }, [searchKeyword, icons]);
 
@@ -220,9 +252,9 @@ export const App = () => {
     );
   };
 
-  async function directToLs() {
+  async function directToLs(url) {
     if (!user?.userid) return; // 防御性检查，确保 userId 存在
-    const lsURL = `https://manysoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8?checkout[custom][user_id]=${user.userid}`;
+    const lsURL = `${url}?checkout[custom][user_id]=${user.userid}`;
     const response = await requestOpenExternalUrl({
       url: lsURL,
     });
@@ -233,52 +265,139 @@ export const App = () => {
   };
 
   const goToIconList = () => {
-    setCurrentPage('icons'); // 切换到二级页面
+    setCurrentPage('icons'); // 切到二级页面
     setIconsResult(icons)
   };
 
-  const startSvgFill = async()=>{
+  const startSvgFill = async () => {
     setIsGenerating(true);
+    setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
     const token = getToken()
-    const {url,viewBoxHeigh,viewBoxWidth,iconHeight,iconWidth} =  await createSvgFill(selectedIcon,svgConfig.svgUrl,svgConfig.color,svgConfig.value as number)
-    // const {labelUrl,labelWidth,labelHeight} = await createLabel(svgConfig.color,labelSize,labelSize)
-    // addNativeElement({
-    //   type: "IMAGE",
-    //   dataUrl: url
-    // });
-    addNativeElement({
-      type:"GROUP",
-      children:[
-        {
-          type: "IMAGE",
-          dataUrl: url,
-          width:viewBoxWidth/12,
-          height:viewBoxHeigh/12,
-          top:0,
-          left:0,
-        },
-        {
-          type: "TEXT",
-          children: [`${svgConfig.value}%`],
-          fontSize: 16,
-          textAlign: "center",
-          top: viewBoxHeigh/12 + 5,
-          left: viewBoxWidth/12/2-14,
+    try {
+      let svgContent: string;
+      
+      if (selectedIconOption === 'library' && selectedIcon !== null) {
+        // 从库中选择的 SVG，使用 URL
+        const selectedIconData = icons.find(icon => icon.id === selectedIcon);
+        if (!selectedIconData) {
+          throw new Error('Selected icon not found');
         }
-      ],
-    });
-    const updatedUser = await subCredits(token,"shapeFill")
-    setCredits(updatedUser.shape_fill_credits)
-    setUser(prevUser => prevUser ? { ...prevUser, shape_fill_credits: updatedUser.shape_fill_credits } : null);
-    setIsGenerating(false);
+        const response = await fetch(selectedIconData.url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch SVG: ${response.statusText}`);
+        }
+        svgContent = await response.text();
+        console.log('Fetched SVG from URL');
+      } else if (selectedIconOption === 'uploadSvg' && uploadedSvg) {
+        // 用户上传的 SVG，读取文件内容
+        svgContent = await readSvgFile(uploadedSvg);
+        console.log('Read uploaded SVG');
+      } else {
+        throw new Error('No SVG selected or uploaded');
+      }
+      if (!svgContent.includes('<svg')) {
+        throw new Error('Invalid SVG content');
+      }
+      const result = await createSvgFill(
+        svgContent,
+        svgConfig.color,
+        svgConfig.value ?? 0,
+        svgConfig.backgroundColor
+      );
+
+      addNativeElement({
+        type:"GROUP",
+        children:[
+          {
+            type: "IMAGE",
+            dataUrl: result.url,
+            width: result.viewBoxWidth / 12,
+            height: result.viewBoxHeigh / 12,
+            top: 0,
+            left: 0,
+          },
+          {
+            type: "TEXT",
+            children: [`${svgConfig.value}%`],
+            fontSize: 16,
+            textAlign: "center",
+            top: result.viewBoxHeigh / 12 + 5,
+            left: result.viewBoxWidth / 12 / 2 - 14,
+          }
+        ],
+      });
+      const updatedUser = await subCredits(token,"shapeFill")
+      setCredits(updatedUser.shape_fill_credits)
+      setUser(prevUser => prevUser ? { ...prevUser, shape_fill_credits: updatedUser.shape_fill_credits } : null);
+    } catch (error) {
+      console.error('Error in startSvgFill:', error);
+      // 已知错误
+      if (error instanceof Error) {
+        setSysError({status:true,type: 'svgFillError',errMsg: error.message, });
+        // 未知错误
+      } else {
+        setSysError({status:true,type: 'svgFillError',errMsg: 'An unexpected error occurred' }
+        );
+      }
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
+  async function getSelectionImage(): Promise<string> {
+    const draft = await currentSelection.read();
+    const isMultiple = draft.contents.length > 1;
+    if (isMultiple) return ''
+    const content = draft.contents[0];
+    if (!content) {
+      return ''
+    }
+    try {
+      const { url } = await getTemporaryUrl({
+        type: "IMAGE",
+        ref: content.ref,
+      });
+
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const reader = new FileReader();
+      return new Promise((resolve, reject) => {
+        reader.onloadend = () => resolve(reader.result?.toString() || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.log(error)
+      // setNoticeError('Something went wrong. Please try again later.')
+      return ''
+    }
+
+  }
   const startFill = async ()=>{
     setIsGenerating(true);
+    setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
     const token = getToken()
     try {
       // 获取抠图+比例填充后的图像、和对应的高和宽
-      const {imgUrl,imgWidth,imgHeight} = await createPercentFill(file as string,segments,fillPattern)
+      let originImage:string
+      if(selectedOption === 'upload'){
+        // 获取用户上传文件前，确认文件是否正常获取到
+        if (!file) {
+          throw new Error('No image file selected');
+        }
+        originImage = file as string
+      }else{
+        // 执行下读取 canva 图片元素的操作,执行前确保用户只选择了 1 张图片
+        if(currentSelection.count>1){
+          throw new Error('Please select only one image');
+        }
+        originImage = await getSelectionImage()
+        // 判断能否成功读取用户选择的文件
+        if (!originImage) {
+          throw new Error('Failed to get selected image');
+        }
+      }
+      const {imgUrl,imgWidth,imgHeight} = await createPercentFill(originImage,segments,fillPattern,removeBackground)
       // 初始化 children 用于存放所有的动态生成的元素
       const children: CanvasElement[] = [];
       children.push(
@@ -326,7 +445,7 @@ export const App = () => {
           // 计算起始位置，使元素居中
           const startX = (imgWidth - totalWidth) / 2;
           
-          // 计算每个元素的位置
+          // 计每个元素的位置
           const leftOffset = startX + index * elementWidth;
           
           // 添加标签图像
@@ -356,22 +475,30 @@ export const App = () => {
         type:"GROUP",
         children:children,
       });
+      // 扣 credits 逻辑
+      const updatedUser = await subCredits(token, "imageFill");
+      setCredits(updatedUser.image_fill_credits);
+      setUser(prevUser => prevUser ? { ...prevUser, image_fill_credits: updatedUser.image_fill_credits } : null);
+      setIsGenerating(false);
     } catch (e: any) {
-      console.log(e)
-      setErrorMessage(
-        `error`
-      );
+      console.error('Error in startFill:', e); 
+      setSysError({
+        status:true,
+        type:'imageFillError',
+        errMsg:e
+      });   
+      // setErrorMessage(
+      //   `error`
+      // );
+    }finally{
+      setIsGenerating(false);
     }
-    const updatedUser = await subCredits(token, "imageFill");
-    setCredits(updatedUser.image_fill_credits);
-    setUser(prevUser => prevUser ? { ...prevUser, image_fill_credits: updatedUser.image_fill_credits } : null);
-    setIsGenerating(false);
   }
 
   // 定义生成错误提示信息的函数
   const setErrorMessage = (e: string) => {
     setIsGenerating(false);
-    // 将函数传入的 e 错误信息，set 到变量error中
+    // 将函数传入的 e 错误信息，set 到变error中
     setError(e);
   };
 
@@ -383,28 +510,25 @@ export const App = () => {
   // 处理icon的选中状态
   const handleIconClick = (icon:icon) => {
     setSelectedIcon(icon.id);
-    const updatedSvgConfig = svgConfig
-    updatedSvgConfig.svgUrl = icon.url
-    setSvgConfig(updatedSvgConfig)
+    setSvgConfig(prevConfig => ({
+      ...prevConfig,
+      svgUrl: icon.url
+    }));
   }
 
   const handleIconClickInList = (icon:icon) => {
     const index = icons.findIndex((i) => i.id === icon.id);
-    if (index > -1) {
-      // 创建 icons 数组的浅拷贝
-      const updatedIcons = [...icons];
-      // 交换图标位置
-      [updatedIcons[0], updatedIcons[index]] = [updatedIcons[index], updatedIcons[0]];
-      // 更新 icons 数组
+    if (index > -1 && index !== 0) {
+      const updatedIcons = [icon, ...icons.filter(i => i.id !== icon.id)];
       setIcons(updatedIcons);
     }
     
-    // 更新选中图标和 SVG 配置
     setSelectedIcon(icon.id);
-    const updatedSvgConfig = { ...svgConfig, svgUrl: icon.url };
-    setSvgConfig(updatedSvgConfig);
+    setSvgConfig(prevConfig => ({
+      ...prevConfig,
+      svgUrl: icon.url
+    }));
 
-    // 返回到主页
     setCurrentPage('main');
   }
 
@@ -414,7 +538,7 @@ export const App = () => {
         keyword: keyword
       };
       const queryString = new URLSearchParams(params).toString();
-      const response = await fetch(`${process.env.CANVA_BACKEND_HOST}/api/iconsearch?${queryString}`, {
+      const response = await fetch(`https://percentfill-backend--partfill.us-central1.hosted.app/api/iconsearch?${queryString}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -441,6 +565,59 @@ export const App = () => {
     }
   }
 
+
+  const processSvg = async () => {
+    if (!uploadedSvg) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const svgContent = e.target?.result as string;
+      
+      // 这里可以直接处理 SVG 内容
+      // 例如，可以更新 svgConfig 状态
+      setSvgConfig(prevConfig => ({
+        ...prevConfig,
+        svgUrl: svgContent,
+        name: uploadedSvg.name
+      }));
+
+      // 清除上传的文件
+      setUploadedSvg(null);
+    };
+    reader.readAsDataURL(uploadedSvg);
+  };
+
+  const readSvgFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target && typeof e.target.result === 'string') {
+          // 检查读取的内容是否是有效的 SVG
+          if (e.target.result.includes('<svg')) {
+            resolve(e.target.result);
+          } else {
+            reject(new Error('The uploaded file does not appear to be a valid SVG'));
+          }
+        } else {
+          reject(new Error('Failed to read file as text'));
+        }
+      };
+      reader.onerror = (e) => reject(new Error('Error reading file'));
+      reader.readAsText(file); // 使用 readAsText 来读取文件内容
+    });
+  };
+  if (isOffline) {
+    return (
+      <Box className={styles.fullHeight} display="flex" alignItems="center">
+        <Rows spacing="2u">
+          <Text variant="bold" size="large" alignment="center">
+            It looks like you're offline
+          </Text>
+          <Text alignment="center">Try checking your internet connection and refresh</Text>
+        </Rows>
+      </Box>
+    );
+  }
 // FormField组件的control属性，需要传1个可返回组件的函数，比如下文的Select就是返回的组件，组件中固定写...props，用于获取上层formfield组件的所有属性
 // setInput((i) => ({ ...i, format: BarcodeFormat[value] }))，i 指代的是当前对象，..i指代当前对象的所有属性，通过后续的format赋值实现重写
   return (
@@ -450,133 +627,234 @@ export const App = () => {
         <Rows spacing="1u">
           <TabList>
             <Tab id="shapefill">
-              ShapeFill
+              Fill icon
             </Tab>
             <Tab id="imagefill">
-              ImageFill
+              Fill image
             </Tab>
           </TabList>
           <TabPanels>
             <TabPanel id="shapefill">
-                  <Columns spacing="0" align="spaceBetween" alignY="center" >
-                    <Text variant="bold" >Icons</Text>
-                    <Columns spacing="1u" align="end" alignY="center">
-                      <Text>more</Text>  
-                      <Button
-                        type="button"
-                        variant="tertiary"
-                        icon={ChevronRightIcon}
-                        ariaLabel="ariaLabel"
-                        iconPosition="end"
-                        alignment="end"
-                        size="small"
-                        onClick={goToIconList}
-                      />
-                    </Columns>
-                  </Columns>
+              {sysError?.status && sysError.type==='svgFillError' && (
+                <Alert
+                  tone="critical"
+                  onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
+                >
+                  {sysError.errMsg}
+                </Alert>
+              )}
+              <SegmentedControl
+                defaultValue="library"
+                options={[
+                  {
+                    label: 'Select from library',
+                    value: 'library'
+                  },
+                  {
+                    label: 'Upload',
+                    value: 'uploadSvg'
+                  }
+                ]}
+                onChange={(value)=>{
+                  setSelectedIconOption(value);  
+                }}
+              />
+              {selectedIconOption === 'library' && (
+                <>
+                <Box display='flex' justifyContent='spaceBetween' paddingY="2u" paddingEnd="2u">
+                    <Text tone='primary' variant='bold'>Icons</Text>
+                    <Text tone='secondary' size='small'>
+                        <div className={styles.seeAll} onClick={() => goToIconList()}>
+                            See all
+                        </div>
+                    </Text>
+                </Box>
                   <Rows spacing="3u">
                     <Rows spacing="2u">
                      <Box padding="1u">
-                      <Grid
-                        alignY="center"
-                        columns={5}
-                        spacing="1u"
-                      >
-                        {/* 只展示 12 个元素 */}
-                        {icons.slice(0, 12).map((icon, index) => (
-                          <Rows key={index} align="center" spacing="1u">
-                            <div
-                              onClick={()=>{handleIconClick(icon)}}
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column', // 让 icon 和 Text 垂直排列
-                                alignItems: 'center', // 水平居中对齐
-                                cursor: 'pointer',
-                                border: selectedIcon === icon.id ? '1px solid #A570FF' : '1px solid transparent', // 选中时边框加重显示颜色
-                                padding: '8px', // 添加一些内边距，让边框效果更明显
-                                borderRadius: '4px', // 添加圆角边框
-                              }}
-                              role="button" // 使 div 拥有按钮的特性
-                            >
-                              <img src={icon.url} width="32" height="32" ></img>
-                              <Text>{icon.name}</Text>
-                            </div>
-                          </Rows>
-                        ))}
-                      </Grid>
+                      {icons.length === 0 &&(
+                          <LoadingIndicator size="medium" />
+                      )}
+                      {icons.length > 0 && (
+                        <Grid
+                          alignY="center"
+                          columns={5}
+                          spacing="1u"
+                        >
+                          {/* 只展示 12 个元素 */}
+                          {icons.slice(0, 10).map((icon, index) => (
+                            <Rows key={index} align="center" spacing="1u">
+                              <div
+                                onClick={()=>{handleIconClick(icon)}}
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column', // 让 icon 和 Text 垂直排列
+                                  alignItems: 'center', // 水平居中对齐
+                                  cursor: 'pointer',
+                                  border: selectedIcon === icon.id ? '1px solid #A570FF' : '1px solid transparent', // 选中时边框加重显示颜色
+                                  padding: '8px', // 添加一些内边距，让边框效果更明显
+                                  borderRadius: '4px', // 添加圆角边框
+                                }}
+                                role="button" // 使 div 拥有按钮的特性
+                              >
+                                <img src={icon.url} width="32" height="32" alt={icon.name}></img>
+                                <Text>{icon.name}</Text>
+                              </div>
+                            </Rows>
+                          ))}
+                        </Grid>
+                      )}
                      </Box>
                     </Rows>
-                  </Rows>
-                  <Rows spacing="0.5u">
-                    <Box paddingY="2u">
-                      <FormField
-                        error={error}
-                        label="Percentage(%)"
-                        control={(props) => (
-                          <Box paddingStart="1.5u">
-                            <Slider
-                              defaultValue={0}
-                              max={100}
-                              min={0}
-                              step={1}
-                              onChangeComplete={(preValue,newValue)=>{
-                                const updatedSvgConfig ={...svgConfig}
-                                updatedSvgConfig.value = newValue
-                                setSvgConfig(updatedSvgConfig)
-                              }}
-                            />
-                          </Box>
-                        )}
-                      />
-                    </Box>
-                    <Box padding="0">
-                      <Rows spacing="1u">
-                        <Text>
-                          <b>Color</b>
-                        </Text>
-                        <ColorSelector
-                            onChange={(data) =>       {
-                              const updatedSvgConfig = {...svgConfig}
-                              updatedSvgConfig.color = data
-                              setSvgConfig(updatedSvgConfig)
-                            }}
-                            color={svgConfig.color}
-                          />
-                      </Rows>
-                    </Box>
-                  </Rows>
-                  <Box paddingY="2u">
-                    <Button
-                      variant="primary"
-                      onClick={startSvgFill}
-                      stretch
-                      loading={isGenerating ? true : undefined} // 条渲染 loading 属性
-                      disabled={isGenerating || (user?.variant_id !== 493905 && user?.variant_id !== 496415 && (credits ?? 0) <= 0)}
-                      >
-                      Generate
-                    </Button>
-                  </Box> 
-                  {(user?.status == 'on-trial' || user?.status == 'expired') && (
+                  </Rows> 
+                 </>
+                )}
+                {selectedIconOption === 'uploadSvg' && (
+                <Box paddingY="1.5u">
+                  <FileInput
+                    stretchButton
+                    accept={[
+                      'image/svg+xml'
+                    ]}
+                    onDropAcceptedFiles={(files: File[]) => {
+                      const uploadedImg = files[0];
+                      const maxSizeInBytes = 4 * 1024 * 1024; // 4MB
+                      if (uploadedImg.size > maxSizeInBytes) {
+                        setSysError({
+                          status: true,
+                          type: "fileSize",
+                          errMsg: 'File size exceeds 4MB, cannot upload'
+                        });
+                        return;
+                      }
+                      const reader = new FileReader(); // 创建FileReader对象
+                      reader.onloadend = () => {
+                        const base64URL = reader.result; // 获取DataURL（Base64编）
+                        // setFile(base64URL as string);
+                        setUploadedSvg(uploadedImg)
+                      };
+                      reader.readAsDataURL(uploadedImg); // 将文件读取为DataURL（Base64编码）
+                      // 设置文件名
+                      setSvgName(uploadedImg.name);
+                      setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
+                    }}
+                  />
+                  {!sysError?.status && (
+                      <Box paddingY="1u">
+                        <Text size="small">Maximum file size: 4MB</Text>
+                      </Box>
+                  )}
+                  {svgName && !(sysError?.status && sysError?.type === "fileSize") &&(
                     <>
-                    <Box paddingY="0">
-                      <Text>
-                        The credits you can use to fill Icons remaining {credits} in this month. Get unlimited usage by{' '}
-                        {user?.userid && (
-                          <Link
-                            href={`https://manysoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8?checkout[custom][user_id]=${user.userid}`}
-                            id="id"
-                            requestOpenExternalUrl={() => directToLs()}
-                            title="PartiFill Pro Plan"
+                      <FileInputItem
+                        label={svgName}
+                        onDeleteClick={()=>{
+                          setUploadedSvg(null); // 将 null 改为 false
+                          setSvgName('');
+                          setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态 
+                        }}
+                      />
+                    </>
+                  )}
+                </Box>
+              )}
+                  {((selectedIconOption === 'library' && selectedIcon !== null) || (selectedIconOption === 'uploadSvg' && uploadedSvg)) && (
+                    <>
+                      <Rows spacing="1.5u">
+                        <Box paddingBottom="1u">
+                          <FormField
+                            error={error}
+                            label="Percentage"
+                            control={(props) => (
+                              <Box paddingStart="1.5u">
+                                <Slider
+                                  defaultValue={0}
+                                  max={100}
+                                  min={0}
+                                  step={1}
+                                  onChangeComplete={(preValue,newValue)=>{
+                                    const updatedSvgConfig ={...svgConfig}
+                                    updatedSvgConfig.value = newValue
+                                    setSvgConfig(updatedSvgConfig)
+                                  }}
+                                />
+                              </Box>
+                            )}
+                          />
+                        </Box>
+                        <Box padding="0">
+                          <Rows spacing="1u">
+                            <Text>
+                              <b>Background color</b>
+                            </Text>
+                            <ColorSelector
+                                onChange={(data) =>       {
+                                  const updatedSvgConfig = {...svgConfig}
+                                  updatedSvgConfig.backgroundColor = data
+                                  setSvgConfig(updatedSvgConfig)
+                                }}
+                                color={svgConfig.backgroundColor}
+                              />
+                          </Rows>
+                        </Box>
+                        <Box padding="0">
+                          <Rows spacing="1u">
+                            <Text>
+                              <b>Fill color</b>
+                            </Text>
+                            <ColorSelector
+                                onChange={(data) =>       {
+                                  const updatedSvgConfig = {...svgConfig}
+                                  updatedSvgConfig.color = data
+                                  setSvgConfig(updatedSvgConfig)
+                                }}
+                                color={svgConfig.color}
+                              />
+                          </Rows>
+                        </Box>
+                      </Rows>
+                      <Box paddingY="2u">
+                        <Button
+                          variant="primary"
+                          onClick={startSvgFill}
+                          stretch
+                          loading={isGenerating ? true : undefined} // 条渲染 loading 属性
+                          disabled={isGenerating || (user?.variant_id !== 493905 && user?.variant_id !== 496415 && (credits ?? 0) <= 0)}
                           >
-                            upgrading to a membership
-                           </Link>
-                        )}
-                      </Text>
-                    </Box>
+                          Generate
+                        </Button>
+                      </Box> 
+                      {(user?.status == 'on-trial' || user?.status == 'expired') && (
+                        <>
+                        <Box paddingY="0">
+                          <Text>
+                            The credits you can use to fill Icons remaining {credits} in this month. Get unlimited usage by{' '}
+                            {user?.userid && (
+                              <Link
+                                href={`https://funkersoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8?checkout[custom][user_id]=${user.userid}`}
+                                id="id"
+                                requestOpenExternalUrl={() => directToLs('https://manysoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8')}
+                                title="PartiFill Pro Plan"
+                              >
+                                upgrading to a membership
+                               </Link>
+                            )}
+                          </Text>
+                        </Box>
+                        </>
+                      )}
                     </>
                   )}
             </TabPanel>
             <TabPanel id="imagefill">
+              {sysError?.status && sysError.type==='imageFillError' && (
+                <Alert
+                  tone="critical"
+                  onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
+                >
+                  {sysError.errMsg}
+                </Alert>
+              )}
               {/* 试用期或过期状态下，展示付费引导信息 */}
               {(user?.status === 'on-trial' || user?.status === 'expired') && (
                 <>
@@ -593,7 +871,7 @@ export const App = () => {
                     <Button 
                     variant="primary"
                     stretch
-                    onClick={()=>directToLs()}
+                    onClick={()=>directToLs('https://manysoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8')}
                     >
                       Upgrade
                     </Button>                   
@@ -603,215 +881,252 @@ export const App = () => {
               {/* 激活状态下，正常展示功能 */}
                {user?.status === 'active' && (
                 <>
-                  <Rows spacing="2u">
-                      <FormField
-                        label="image"
-                        // description="The image you want to fill"
-                        control={(props) => (
-                          <FileInput
-                            {...props}
-                            stretchButton
-                            accept={[
-                              'image/*'
-                            ]}
-                            onDropAcceptedFiles={(files:File[])=>{
-                              const uploadedImg = files[0] 
-                              const reader = new FileReader(); // 创建FileReader对象
-                              reader.onloadend = () => {
-                                const base64URL = reader.result; // 获取DataURL（Base64编码）
-                                setFile(base64URL as string);
-                              };
-                              reader.readAsDataURL(uploadedImg); // 将文件读取为DataURL（Base64编码）
+                  <Rows spacing="1.5u">
+                  <SegmentedControl
+                    defaultValue="select"
+                    options={[
+                      {
+                        label: 'Select from design',
+                        value: 'select'
+                      },
+                      {
+                        label: 'Upload',
+                        value: 'upload'
+                      }
+                    ]}
+                    onChange={(value)=>{
+                      setSelectedOption(value);  
+                    }}
+                  />
+                  {selectedOption === 'upload' ?(
+                        <>
+                        {sysError?.status && sysError.type === "fileSize" && (
+                          <Alert
+                            onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
+                            tone="warn"
+                          >
+                            {sysError.errMsg}
+                          </Alert>
+                        )}
+                        <FileInput
+                          // {...props}
+                          stretchButton
+                          accept={[
+                            'image/png',
+                            'image/jpeg',
+                            'image/jpg'
+                          ]}
+                          onDropAcceptedFiles={(files: File[]) => {
+                            const uploadedImg = files[0];
+                            const maxSizeInBytes = 4 * 1024 * 1024; // 4MB
+
+                            if (uploadedImg.size > maxSizeInBytes) {
+                              setSysError({
+                                status: true,
+                                type: "fileSize",
+                                errMsg: 'File size exceeds 4MB, cannot upload'
+                              });
+                              return;
+                            }
+
+                            const reader = new FileReader(); // 创建FileReader对象
+                            reader.onloadend = () => {
+                              const base64URL = reader.result; // 获取DataURL（Base64编）
+                              setFile(base64URL as string);
+                            };
+                            reader.readAsDataURL(uploadedImg); // 将文件读取为DataURL（Base64编码）
+                            // 设置文件名
+                            setFileName(uploadedImg.name);
+                            setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
+                          }}
+                        />
+                        {!sysError?.status && (
+                          <Text size="small">Maximum file size: 4MB</Text>
+                        )}
+                        {fileName && !(sysError?.status && sysError?.type === "fileSize") && (
+                          <FileInputItem 
+                            label={fileName}
+                            onDeleteClick={() => {
+                              setFile(false); // 将 null 改为 false
+                              setFileName('');
+                              setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
                             }}
                           />
                         )}
-                      />
-                      {file && <img src={file as string} alt="Uploaded image" />}
-                      <FormField
-                      label="Fill Direction"
-                      control={(props) => (
-                        <Select
-                          {...props}
-                          stretch
-                          options={[
-                            { value: "vertical", label: "Vertical" },
-                            { value: "horizontal", label: "Horizontal" },
-                          ]}
-                          onChange={(value) =>
-                            setFillPattern(value)
-                          }
-                        />
+                        </>
+                      ):(
+                        <Alert tone="info">
+                            Select an image in your design to fill by percent
+                        </Alert>                  
                       )}
-                      />
-                      <Rows spacing="3u">
-                        {segments.map((segment, index) => (
-                          <Box
-                            key={index}
-                            background="neutralLow"
-                            borderRadius="large"
-                            padding="2u"
-                          >
-                            <Rows spacing="1u">
-                              <Columns spacing="0" align="spaceBetween" alignY="center">
-                                <Title size="xsmall">
-                                  Portion {index + 1}
-                                </Title>
-                                {index !== 0 && (
-                                  <Button
-                                    type="button"
-                                    variant="tertiary"
-                                    icon={TrashIcon}
-                                    ariaLabel="ariaLabel"
-                                    size="medium"
-                                    onClick={() => removeSegment(index)}
-                                  />
-                                )}
-                              </Columns>
-                              <Grid alignX="stretch" alignY="stretch" columns={1} spacing="1u">
+                        {((selectedOption === 'upload' && file) || (selectedOption === 'select' && currentSelection.count > 0)) && !(sysError?.status && sysError.type === "fileSize") && (
+                          <>
+                             <FormField
+                              label="Image adjustments"
+                              control={() => (
+                                <Switch
+                                  value={removeBackground}
+                                  label="Remove background"
+                                  description="Enable to remove the background. No need to toggle if your image has no background. "
+                                  onChange={(value)=>{
+                                    setRemoveBackground(value);
+                                  }}
+                                />
+                              )}
+                            />
+                            <FormField
+                              label="Fill direction"
+                              control={(props) => (
+                                <Select
+                                  {...props}
+                                  stretch
+                                  options={[
+                                    { value: "vertical", label: "Vertical" },
+                                    { value: "horizontal", label: "Horizontal" },
+                                  ]}
+                                  onChange={(value) =>
+                                    setFillPattern(value)
+                                  }
+                                />
+                              )}
+                            />
+                            <Rows spacing="1.5u">
+                              <Text variant="bold">Portions</Text>
+                              {segments.map((segment, index) => (
                                 <Box
+                                  key={index}
                                   background="neutralLow"
                                   borderRadius="large"
-                                  padding="1u"
-                                >
-                                  <FormField
-                                    error={error}
-                                    label="Label name"
-                                    control={(props) => (
-                                      <TextInput
-                                        type="text"
-                                        name="label"
-                                        placeholder="input label name"
-                                        onChange={(data) => {
-                                          const updatedSegments = [...segments];
-                                          updatedSegments[index].name = data;
-                                          setSegments(updatedSegments);
-                                        }}
-                                      />
-                                    )}
-                                  />
-                                </Box>
-                                <Box
-                                  background="neutralLow"
-                                  borderRadius="large"
-                                  padding="1u"
+                                  paddingX="1.5u"
+                                  paddingTop="1u"
+                                  paddingBottom="1.5u"
                                 > 
-                                  <FormField
-                                    error={error}
-                                    label="Percentage(%)"
-                                    control={(props) => (
-                                      <Box paddingStart="1.5u">
-                                      <Slider
-                                        defaultValue={0}
-                                        max={100}
-                                        min={0}
-                                        step={1}
-                                        onChangeComplete={(preValue,newValue)=>{
-                                          console.log('slider-value='+newValue)
-                                          const updatedSegments = [...segments];
-                                          updatedSegments[index].value = newValue;
-                                          setSegments(updatedSegments);
-                                        }}
+                                <Columns spacing="0" align="end" alignY="center">
+                                  {/* <Text size="medium" alignment="center">
+                                    Portion {index + 1}
+                                  </Text> */}
+                                      {index !== 0 && (
+                                        <Button
+                                          type="button"
+                                          variant="tertiary"
+                                          icon={ClearIcon}
+                                          ariaLabel="ariaLabel"
+                                          size="small"
+                                          onClick={() => removeSegment(index)}
+                                        />
+                                      )}
+                                    </Columns>
+                                  <Rows spacing="1u">
+                                    <Grid alignX="stretch" alignY="stretch" columns={1} spacing="1u">
+                                      <FormField
+                                        error={error}
+                                        label="Label name"
+                                        control={(props) => (
+                                          <TextInput
+                                            type="text"
+                                            name="label"
+                                            defaultValue= {`Portion ${index + 1}`}
+                                            placeholder="input label name"
+                                            onChange={(data) => {
+                                              const updatedSegments = [...segments];
+                                              updatedSegments[index].name = data;
+                                              setSegments(updatedSegments);
+                                            }}
+                                          />
+                                        )}
                                       />
-                                    </Box>
-                                    )}
-                                  />
-                                  {/* <FormField
-                                    error={error}
-                                    label="Percentage(%)"
-                                    control={(props) => (
-                                      <NumberInput
-                                        // placeholder=""
-                                        maximumFractionDigits={100}
+                                      <FormField
+                                        error={error}
+                                        label="Percentage"
+                                        control={(props) => (
+                                          <Box paddingStart="1.5u">
+                                            <Slider
+                                              defaultValue={0}
+                                              max={100}
+                                              min={0}
+                                              step={1}
+                                              onChangeComplete={(preValue,newValue)=>{
+                                                console.log('slider-value='+newValue)
+                                                const updatedSegments = [...segments];
+                                                updatedSegments[index].value = newValue;
+                                                setSegments(updatedSegments);
+                                              }}
+                                            />
+                                          </Box>
+                                        )}
+                                      />
+                                      <Text>
+                                        <b>Fill color</b>
+                                      </Text>
+                                      <ColorSelector
                                         onChange={(data) => {
                                           const updatedSegments = [...segments];
-                                          updatedSegments[index].value = data;
+                                          updatedSegments[index].color = data;
                                           setSegments(updatedSegments);
                                         }}
+                                        color={segment.color}
                                       />
-                                    )}
-                                  /> */}
+                                      <Text>
+                                        <b>Transparency</b>
+                                      </Text>
+                                      <Box paddingStart="1.5u">
+                                        <Slider
+                                          defaultValue={0}
+                                          max={100}
+                                          min={0}
+                                          step={1}
+                                          onChange={(data) => {
+                                            const updatedSegments = [...segments];
+                                            updatedSegments[index].opacity = data;
+                                            setSegments(updatedSegments);
+                                          }}
+                                        />
+                                      </Box>
+                                    </Grid>
+                                  </Rows>
+                        
                                 </Box>
-                                <Box
-                                  background="neutralLow"
-                                  borderRadius="large"
-                                  padding="1u"
-                                >
-                                  <Columns spacing="0" align="spaceBetween" alignY="center">
-                                    <Text>
-                                      <b>Color</b>
-                                    </Text>
-                                    <ColorSelector
-                                      onChange={(data) => {
-                                        const updatedSegments = [...segments];
-                                        updatedSegments[index].color = data;
-                                        setSegments(updatedSegments);
-                                      }}
-                                      color={segment.color}
-                                    />
-                                  </Columns>
-                                </Box>
-                                <Box
-                                  background="neutralLow"
-                                  borderRadius="large"
-                                  padding="1u"
-                                >
-                                  <Text>
-                                      <b>Opacity</b>
-                                    </Text>
-                                    <Slider
-                                      defaultValue={0}
-                                      max={100}
-                                      min={0}
-                                      step={1}
-                                      onChange={(data) => {
-                                        const updatedSegments = [...segments];
-                                        updatedSegments[index].opacity = data;
-                                        setSegments(updatedSegments);
-                                      }}
-                                    />
-                                </Box>
-                              </Grid>
+                              ))}
                             </Rows>
-                          </Box>
-                        ))}
-                      </Rows>
-                      <Button
-                        variant="secondary"
-                        onClick={addSegment}
-                        stretch
-                        disabled={isGenerating}
-                      >
-                        Add segment
-                      </Button>
-                      <Button
-                        variant="primary"
-                        onClick={startFill}
-                        stretch
-                        loading={isGenerating ? true : undefined} // 条件渲染 loading 属性
-                        disabled={isGenerating || (user?.variant_id !== 493905 && (credits ?? 0) <= 0)}                      >
-                        Generate
-                      </Button>
-                  </Rows>
-                  {/* 如果是月付计划，则会提示额度剩余可用额度,引导升级年会会员 */}
-                 {(user?.variant_id == 496415) && (
-                    <>
-                    <Box paddingY="2u">
-                      <Text>
-                        The credits you can use to fill Image remaining {credits} in this month. Get unlimited usage by{' '}
-                        {user?.userid && (
-                          <Link
-                            href={`https://manysoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8?checkout[custom][user_id]=${user.userid}`}
-                            id="id"
-                            requestOpenExternalUrl={() => directToLs()}
-                            title="PartiFill Pro Plan"
-                          >
-                            upgrading to an annual membership
-                           </Link>
+                            <Button
+                              variant="secondary"
+                              onClick={addSegment}
+                              stretch
+                              disabled={isGenerating}
+                            >
+                              Add portion
+                            </Button>
+                            <Button
+                              variant="primary"
+                              onClick={startFill}
+                              stretch
+                              loading={isGenerating ? true : undefined} // 条件渲染 loading 属性
+                              disabled={isGenerating || (user?.variant_id !== 493905 && (credits ?? 0) <= 0)}                          >
+                              Generate
+                            </Button>
+                             {/* 如果是月付计，则会提示额度剩余可用额度,引导升级年会会员 */}
+                              {(user?.variant_id == 496415) && (
+                                  <>
+                                  <Box paddingY="0">
+                                    <Text size="small">
+                                      The credits you can use to fill Image remaining {credits} in this month. Get unlimited usage by{' '}
+                                      {user?.userid && (
+                                        <Link
+                                          href={`https://funkersoft.lemonsqueezy.com/buy/c5d9b14f-b484-4a9c-af30-1f7af13eacf0?checkout[custom][user_id]=${user.userid}`}
+                                          id="id"
+                                          requestOpenExternalUrl={() => directToLs('https://funkersoft.lemonsqueezy.com/buy/c5d9b14f-b484-4a9c-af30-1f7af13eacf0')}
+                                          title="PartiFill Pro Plan"
+                                        >
+                                          upgrading to an annual membership
+                                        </Link>
+                                      )}
+                                    </Text>
+                                  </Box>
+                                  </>
+                                )}
+                          </>
                         )}
-                      </Text>
-                    </Box>
-                    </>
-                  )}
+                  </Rows>
                 </>
                )}
             </TabPanel>
@@ -832,7 +1147,7 @@ export const App = () => {
               />
             <Title>Icons</Title>  
           </Columns>
-          <Rows spacing="3u">
+          <Rows spacing="2u">
             <Box paddingTop="2u">
               <SearchInputMenu
                   name="iconname"
@@ -846,7 +1161,7 @@ export const App = () => {
                 />
             </Box> 
             <Box paddingY="0">
-              <Rows spacing="1.5u">  
+              <Rows spacing="2u">  
                 {iconsResult.length > 0 ? (
                   <Grid
                     alignY="center"
@@ -864,7 +1179,7 @@ export const App = () => {
                             cursor: 'pointer',
                             border: selectedIcon === icon.id ? '1px solid #A570FF' : '1px solid transparent', // 选中时边框加重并显示颜色
                             padding: '8px', // 添加一些内边距，让边框效果更明显
-                            borderRadius: '4px', // 添加圆角边框
+                            borderRadius: '4px', // 添加圆��边框
                           }}
                           role="button" // 使 div 拥有按钮的特性
                         >
@@ -875,36 +1190,9 @@ export const App = () => {
                     ))}
                   </Grid>
                 ) : searchKeyword !== '' ? (
-                  <Box padding="4u" alignItems="center">
-                    <Rows spacing="3u" align="center">
-                      <FaRegFrown size={48} color="#999" />
-                      <Title size="medium">No matching icons found</Title>
-                      <Text>Sorry, we couldn't find any icons that match your search.</Text>
-                      <Text>Try the following:</Text>
-                      <Rows spacing="1u" align="start">
-                        <Text>• Check your spelling</Text>
-                        <Text>• Try different keywords</Text>
-                        <Text>• Use more general terms</Text>
-                      </Rows>
-                      <Button 
-                        variant="secondary"
-                        onClick={() => {
-                          // 清空搜索框内容
-                          setSearchKeyword('');
-                          // 重置搜索结果为所有图标
-                          setIconsResult(icons);
-                          setHasSearchResults(true);
-                          // 添加一个小延迟，确保状态更新已完成
-                          setTimeout(() => {
-                            // 再次确保图标列表显示所有图标
-                            setIconsResult(prevIcons => prevIcons.length ? prevIcons : icons);
-                          }, 0);
-                        }}
-                      >
-                        Show all icons
-                      </Button>
-                    </Rows>
-                  </Box>
+                      <Text alignment="center" size="small">
+                        No results found for "{searchKeyword}". Try searching for a different term.
+                      </Text>
                 ) : null}
               </Rows>
             </Box>

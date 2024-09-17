@@ -107,3 +107,8 @@
   letter-spacing: 0.6px;
   font-weight: 700;
 }
+
+.seeAll {
+  cursor: pointer;
+  transition: color 0.3s ease;
+}

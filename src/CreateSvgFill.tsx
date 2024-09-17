@@ -1,4 +1,5 @@
-import { getToken,setToken } from "./tokenManager";
+// import { getToken,setToken } from "./tokenManager";
+// import { performance } from 'perf_hooks';
 
 type coreSvg = {
   url:string,
@@ -9,32 +10,34 @@ type coreSvg = {
 };
 
 const createSvgFill = async (
-  iconId:number,
-  svgUrl: string,
+  // iconId:number,
+  svgContent: string,
   fillColor: string,
-  fillPercentage: number
+  fillPercentage: number,
+  backgroundColor: string // 新增背景色参数
 ): Promise<coreSvg> => {
   // Load SVG from URL
-  console.log("开始获取 svg="+svgUrl)
-  const token = getToken()
-  const params = {
-    id: iconId.toString()
-  };
-  const queryString = new URLSearchParams(params).toString();
-  const response = await fetch(`${process.env.CANVA_BACKEND_HOST}/api/icon?${queryString}`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-    },
-    mode: "cors", // 启用跨域请求
-  });
-  const svgText = await response.text(); 
+  // console.log("开始获取 svg="+svgUrl)
+  // const token = getToken()
+  // const params = {
+  //   id: iconId.toString()
+  // };
+  // const queryString = new URLSearchParams(params).toString();
+  // const response = await fetch(`https://percentfill-backend--partfill.us-central1.hosted.app/api/icon?${queryString}`, {
+  //   method: "GET",
+  //   headers: {
+  //     "Content-Type": "application/json",
+  //     "Authorization": `Bearer ${token}`,
+  //   },
+  //   mode: "cors", // 启用跨域请求
+  // });
+  // const svgText = await response.text(); 
   // Create a temporary div to hold the SVG for size measurement
+  console.log('svgcontent='+svgContent)
   const tempDiv = document.createElement('div');
   tempDiv.style.position = 'absolute';
   tempDiv.style.visibility = 'hidden';
-  tempDiv.innerHTML = svgText;
+  tempDiv.innerHTML = svgContent;
   document.body.appendChild(tempDiv);
 
   // Extract the SVG element and its dimensions using getBBox
@@ -61,10 +64,10 @@ const createSvgFill = async (
   document.body.removeChild(tempDiv);
 
   // Encode the SVG text properly
-  const encodedSvg = encodeURIComponent(svgText);
+  const encodedSvg = encodeURIComponent(svgContent);
   const imageSrc = `data:image/svg+xml;charset=utf-8,${encodedSvg}`;
   const parser = new DOMParser();
-  const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+  const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
   const viewBox = svgElement.getAttribute('viewBox')?.split(' ').map(Number);
   if (!viewBox || viewBox.length < 4) {
         throw new Error('Invalid viewBox attribute');
@@ -114,7 +117,7 @@ const createSvgFill = async (
 
   // Create a grayscale version of the SVG
   finalCtx.globalCompositeOperation = 'source-in';
-  finalCtx.fillStyle = '#dbdbdb'; // Fill with gray to ensure grayscale
+  finalCtx.fillStyle = backgroundColor; // 使用传入的背景色替代固定的灰色
   finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
 
   // Create a gradient for the fill starting from the bottom
