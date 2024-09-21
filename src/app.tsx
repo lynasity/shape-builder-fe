@@ -282,7 +282,13 @@ export const App = () => {
         if (!selectedIconData) {
           throw new Error('Selected icon not found');
         }
-        const response = await fetch(selectedIconData.url);
+        // 要改为通过后端服务获取
+        const params = {
+          id: selectedIconData.id.toString()
+        };
+        const queryString = new URLSearchParams(params).toString();
+        const response = await fetch(`https://percentfill-backend--partfill.us-central1.hosted.app/api/icon?${queryString}`);
+        // const response = await fetch(selectedIconData.url);
         if (!response.ok) {
           throw new Error(`Failed to fetch SVG: ${response.statusText}`);
         }
