@@ -1,7 +1,5 @@
 // import { getToken,setToken } from "./tokenManager";
 
-import { userInfo } from "os";
-
 type user = {
   userid:string,
   brandId:string,

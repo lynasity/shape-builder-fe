@@ -5,7 +5,7 @@ export const getToken = (): string | null => {
   return token;
 };
 
-export const setToken = (newToken: string): void => {
+export const setToken = (newToken: string|null): void => {
   token = newToken;
 };
 

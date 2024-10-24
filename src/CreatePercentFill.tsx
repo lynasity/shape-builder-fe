@@ -1,5 +1,6 @@
 import { getToken } from "./tokenManager";
 import { blobToBase64 } from './trasfer';
+import {auth} from "@canva/user"
 
 type coreImg = {
   imgUrl: string,
@@ -25,8 +26,7 @@ async function createPercentFill(background: string, segments: segment[], fillPa
   let lastTime = startTime;
 
   try {
-    const token = getToken();
-    lastTime = logTime(lastTime, "获取 token");
+    const token = await auth.getCanvaUserToken();
 
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");

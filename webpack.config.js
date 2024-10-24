@@ -1,8 +1,9 @@
 require("dotenv").config();
 const path = require("path");
 const TerserPlugin = require("terser-webpack-plugin");
-const { DefinePlugin } = require("webpack");
+const { DefinePlugin, optimize } = require("webpack");
 const chalk = require("chalk");
+const { transform } = require("@formatjs/ts-transformer");
 
 /**
  *
@@ -10,10 +11,13 @@ const chalk = require("chalk");
  * @param {string} [options.appEntry=./src/index.tsx]
  * @param {string} [options.backendHost]
  * @param {Object} [options.devConfig]
- * @param {string} options.devConfig.port
+ * @param {number} [options.devConfig.port]
  * @param {boolean} [options.devConfig.enableHmr]
  * @param {boolean} [options.devConfig.enableHttps]
- * @param {string} [options.devConfig.appId]
+ * @param {string} [options.devConfig.appOrigin]
+ * @param {string} [options.devConfig.appId] - Deprecated in favour of appOrigin
+ * @param {string} [options.devConfig.certFile]
+ * @param {string} [options.devConfig.keyFile]
  * @returns {Object}
  */
 function buildConfig({
@@ -48,7 +52,6 @@ function buildConfig({
     resolve: {
       alias: {
         assets: path.resolve(__dirname, "assets"),
-        components: path.resolve(__dirname, "components"),
         utils: path.resolve(__dirname, "utils"),
         styles: path.resolve(__dirname, "styles"),
         src: path.resolve(__dirname, "src"),
@@ -68,6 +71,15 @@ function buildConfig({
               loader: "ts-loader",
               options: {
                 transpileOnly: true,
+                getCustomTransformers() {
+                  return {
+                    before: [
+                      transform({
+                        overrideIdFn: "[sha512:contenthash:base64:6]",
+                      }),
+                    ],
+                  };
+                },
               },
             },
           ],
@@ -84,15 +96,13 @@ function buildConfig({
               },
             },
             {
-              loader: 'postcss-loader',
+              loader: "postcss-loader",
               options: {
                 postcssOptions: {
-                  plugins: [
-                    require('cssnano')({ preset: 'default' }),
-                  ]
-                }
-              }
-            }
+                  plugins: [require("cssnano")({ preset: "default" })],
+                },
+              },
+            },
           ],
         },
         {
@@ -105,20 +115,6 @@ function buildConfig({
         },
         {
           test: /\.svg$/,
-          include: path.resolve(__dirname, "assets", "icons"),
-          use: [
-            {
-              loader: "@svgr/webpack",
-              options: {
-                icon: true,
-                template: createIconTemplate,
-              },
-            },
-          ],
-        },
-        {
-          test: /\.svg$/,
-          exclude: path.resolve(__dirname, "assets", "icons"),
           oneOf: [
             {
               issuer: /\.[jt]sx?$/,
@@ -163,7 +159,7 @@ function buildConfig({
               ascii_only: true,
             },
           },
-        })
+        }),
       ],
     },
     output: {
@@ -175,47 +171,23 @@ function buildConfig({
       new DefinePlugin({
         BACKEND_HOST: JSON.stringify(backendHost),
       }),
+      // Apps can only submit a single JS file via the developer portal
+      new optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
     ],
     ...buildDevConfig(devConfig),
   };
 }
 
 /**
- * Defines the template that @svgr/webpack uses to generate React
- * components for the starter kit's icons.
- *
- * Learn more: https://react-svgr.com/docs/options/#template
- */
-function createIconTemplate(variables, { tpl }) {
-  return tpl`
-${variables.imports};
-${variables.interfaces};
-
-const SIZES_PX = {
-  tiny: 12,
-  small: 16,
-  medium: 24,
-  large: 32,
-}
-
-const DEFAULT_SIZE = "medium";
-
-const ${variables.componentName} = (${variables.props}) => {
-  const size = SIZES_PX[props.size] || SIZES_PX[DEFAULT_SIZE];
-  return React.cloneElement(${variables.jsx}, { ...props, width: size, height: size });
-};
- 
-${variables.exports};
-`;
-}
-
-/**
  *
  * @param {Object} [options]
- * @param {string} options.port
+ * @param {number} [options.port]
  * @param {boolean} [options.enableHmr]
  * @param {boolean} [options.enableHttps]
- * @param {string} [options.appId]
+ * @param {string} [options.appOrigin]
+ * @param {string} [options.appId] - Deprecated in favour of appOrigin
+ * @param {string} [options.certFile]
+ * @param {string} [options.keyFile]
  * @returns {Object|null}
  */
 function buildDevConfig(options) {
@@ -223,10 +195,20 @@ function buildDevConfig(options) {
     return null;
   }
 
-  const { port, enableHmr, appId, enableHttps } = options;
+  const { port, enableHmr, appOrigin, appId, enableHttps, certFile, keyFile } =
+    options;
 
   let devServer = {
-    server: enableHttps ? "https" : "http",
+    server: enableHttps
+      ? {
+          type: "https",
+          options: {
+            cert: certFile,
+            key: keyFile,
+          },
+        }
+      : "http",
+    host: "localhost",
     historyApiFallback: {
       rewrites: [{ from: /^\/$/, to: "/app.js" }],
     },
@@ -240,11 +222,27 @@ function buildDevConfig(options) {
     },
   };
 
-  if (enableHmr && appId) {
-    const appDomain = `app-${appId}.canva-apps.com`;
+  if (enableHmr && appOrigin) {
     devServer = {
       ...devServer,
-      host: "localhost",
+      allowedHosts: new URL(appOrigin).hostname,
+      headers: {
+        "Access-Control-Allow-Origin": appOrigin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Private-Network": "true",
+      },
+    };
+  } else if (enableHmr && appId) {
+    // Deprecated - App ID should not be used to configure HMR in the future and can be safely removed
+    // after a few months.
+
+    console.warn(
+      "Enabling Hot Module Replacement (HMR) with an App ID is deprecated, please see the README.md on how to update."
+    );
+
+    const appDomain = `app-${appId.toLowerCase().trim()}.canva-apps.com`;
+    devServer = {
+      ...devServer,
       allowedHosts: appDomain,
       headers: {
         "Access-Control-Allow-Origin": `https://${appDomain}`,
@@ -253,9 +251,9 @@ function buildDevConfig(options) {
       },
     };
   } else {
-    if (enableHmr && !appId) {
+    if (enableHmr && !appOrigin) {
       console.warn(
-        "Attempted to enable HMR without supplying an App ID... Disabling HMR."
+        "Attempted to enable Hot Module Replacement (HMR) without configuring App Origin... Disabling HMR."
       );
     }
     devServer.webSocketServer = false;

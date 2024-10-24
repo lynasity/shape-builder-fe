@@ -28,18 +28,18 @@ import {
   LoadingIndicator,
   Switch,
 } from "@canva/app-ui-kit";
-import { addNativeElement } from "@canva/design";
+// import { addNativeElement } from "@canva/design";
 import * as React from "react";
 //@ts-ignore
 import styles from "styles/components.css";
-
+import { useAddElement } from "utils/use_add_element";
 
 import createPercentFill from "./CreatePercentFill";
 import createLabel from "./CreateLabel";
 import createSvgFill from "./CreateSvgFill"
 // import { app, analytics } from './firebase'; // 引入 Firebase 配置
 import {auth} from "@canva/user"
-import { getToken,setToken } from "./tokenManager";
+// import { getToken,setToken } from "./tokenManager";
 import {login} from "./account";
 import { subCredits } from './account';
 import { requestOpenExternalUrl } from "@canva/platform";
@@ -47,6 +47,7 @@ import { requestOpenExternalUrl } from "@canva/platform";
 // import { selection } from "@canva/design";
 import { getTemporaryUrl } from "@canva/asset";
 import { useSelection } from "utils/use_selection_hook";
+import { addElementAtPoint, GroupContentAtPoint } from "@canva/design";
 
 type segment = {
   // 图例颜色，也会用在填充颜色
@@ -74,10 +75,10 @@ type icon = {
 const defaultSegment:segment[] = 
 [
   {
-    name:"label1",
-    color:"#000000",
-    value:40,
-    opacity:0.4
+    name:"Portion 1",
+    color:"#dbdbdb",
+    value:0,
+    opacity:60
   }
 ]
 
@@ -86,7 +87,7 @@ const defaultSvgConfig: SvgConfig =
     svgUrl:"",
     name:"label",
     color: "#000000",
-    value: 40,
+    value: 0,
     backgroundColor: "#dbdbdb" // 设置默认背景色
 }
 
@@ -129,12 +130,13 @@ type error = {
 
 // 根节点定义
 export const App = () => {
+  const addElement = useAddElement();
   // 图片自定义填充时各区域数据
   const [segments,setSegments] = React.useState<segment[]>(defaultSegment)
   // 是否正在进行图片填充
   const [isGenerating, setIsGenerating] = React.useState<boolean>(false);
   // 图片填充模式下的填充方向
-  const [fillPattern,setFillPattern] = React.useState<string>("verticle");
+  const [fillPattern,setFillPattern] = React.useState<string|null>('vertical');
   const [error, setError] = React.useState<string | boolean>(false);
   // 图片填充模式下上传的文件
   const [file,setFile] = React.useState<string| boolean>(false);
@@ -174,10 +176,10 @@ export const App = () => {
   
   const addSegment = () => {
     const newSegment: segment = {
-      name: "label",
+      name: `Portion ${segments.length + 1}`,
       color: "#000000", // 默认颜色，可以动态修改
       value: 0 ,// 默认百分比值
-      opacity:0.4
+      opacity:60
     };
     setSegments([...segments, newSegment]);
   };
@@ -185,7 +187,7 @@ export const App = () => {
   const getUserInfo = React.useCallback(async () => {
     try {
       const token = await auth.getCanvaUserToken();
-      setToken(token);
+      // setToken(token);
       const userInfo = await login(token);
       setUser(userInfo as any);
       setCredits(userInfo.shape_fill_credits);
@@ -193,11 +195,11 @@ export const App = () => {
       return token;
     } catch (error) {
       // 无法正常获取 token 时，给个空token
-      const token ='';
-      setToken(token);
+      // const token ='';
       console.error('Failed to get user info:', error);
       setIsOffline(true); // 设置离线状态
-      return token;
+      // setToken(null);
+      throw error;
     }
   }, []);
   const fetchIconData = React.useCallback(async (token: string) => {
@@ -272,7 +274,8 @@ export const App = () => {
   const startSvgFill = async () => {
     setIsGenerating(true);
     setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
-    const token = getToken()
+    // const token = getToken()
+    const token = await auth.getCanvaUserToken();
     try {
       let svgContent: string;
       
@@ -287,7 +290,14 @@ export const App = () => {
           id: selectedIconData.id.toString()
         };
         const queryString = new URLSearchParams(params).toString();
-        const response = await fetch(`https://percentfill-backend--partfill.us-central1.hosted.app/api/icon?${queryString}`);
+        const response = await fetch(`https://percentfill-backend--partfill.us-central1.hosted.app/api/icon?${queryString}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          mode: "cors", // 启用跨域请求
+        });
         // const response = await fetch(selectedIconData.url);
         if (!response.ok) {
           throw new Error(`Failed to fetch SVG: ${response.statusText}`);
@@ -311,11 +321,12 @@ export const App = () => {
         svgConfig.backgroundColor
       );
 
-      addNativeElement({
-        type:"GROUP",
+      addElementAtPoint({
+        type:"group",
         children:[
           {
-            type: "IMAGE",
+            type: "image",
+            altText:undefined,
             dataUrl: result.url,
             width: result.viewBoxWidth / 12,
             height: result.viewBoxHeigh / 12,
@@ -323,7 +334,7 @@ export const App = () => {
             left: 0,
           },
           {
-            type: "TEXT",
+            type: "text",
             children: [`${svgConfig.value}%`],
             fontSize: 16,
             textAlign: "center",
@@ -360,10 +371,9 @@ export const App = () => {
     }
     try {
       const { url } = await getTemporaryUrl({
-        type: "IMAGE",
+        type: "image",
         ref: content.ref,
       });
-
       const response = await fetch(url);
       const blob = await response.blob();
       const reader = new FileReader();
@@ -382,7 +392,12 @@ export const App = () => {
   const startFill = async ()=>{
     setIsGenerating(true);
     setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
-    const token = getToken()
+    // const token = getToken()
+    if(!fillPattern){
+      setSysError({ status: true, type: "datanull", errMsg: "pleast select fill direction" })
+      setIsGenerating(false);
+      return;
+    }
     try {
       // 获取抠图+比例填充后的图像、和对应的高和宽
       let originImage:string
@@ -395,7 +410,8 @@ export const App = () => {
       }else{
         // 执行下读取 canva 图片元素的操作,执行前确保用户只选择了 1 张图片
         if(currentSelection.count>1){
-          throw new Error('Please select only one image');
+          // setSysError({status: true, type: "imageError", errMsg: "lease select only one image"});
+          return;
         }
         originImage = await getSelectionImage()
         // 判断能否成功读取用户选择的文件
@@ -403,12 +419,14 @@ export const App = () => {
           throw new Error('Failed to get selected image');
         }
       }
-      const {imgUrl,imgWidth,imgHeight} = await createPercentFill(originImage,segments,fillPattern,removeBackground)
+      
+      const {imgUrl,imgWidth,imgHeight} = await createPercentFill(originImage,segments,fillPattern as string,removeBackground)
       // 初始化 children 用于存放所有的动态生成的元素
-      const children: CanvasElement[] = [];
+      const children: GroupContentAtPoint[] = [];
       children.push(
         {
-          type: "IMAGE",
+          type: "image",
+          altText:undefined,
           dataUrl: imgUrl,
           width:imgWidth,
           height:imgHeight,
@@ -423,7 +441,8 @@ export const App = () => {
         if(fillPattern === 'verticle'){
           const topOffset = imgHeight / 2 - 40 + index * 70;
           children.push({
-            type: "IMAGE",
+            type: "image",
+            altText:undefined,
             dataUrl: labelUrl,
             width: labelWidth,
             height: labelHeight,
@@ -432,7 +451,7 @@ export const App = () => {
           });
           // 推送 TEXT 元素
           children.push({
-            type: "TEXT",
+            type: "text",
             children: [`${segment.name}: ${segment.value}%`],
             fontSize: 64,
             textAlign: "center",
@@ -456,7 +475,8 @@ export const App = () => {
           
           // 添加标签图像
           children.push({
-            type: "IMAGE",
+            type: "image",
+            altText:undefined,
             dataUrl: labelUrl,
             width: labelWidth,
             height: labelHeight,
@@ -466,7 +486,7 @@ export const App = () => {
           
           // 添加文字
           children.push({
-            type: "TEXT",
+            type: "text",
             children: [`${segment.name}: ${segment.value}%`],
             fontSize: fontSize,
             textAlign: "start",
@@ -477,11 +497,12 @@ export const App = () => {
       });
       await Promise.all(segmentPromises);
 
-      addNativeElement({
-        type:"GROUP",
+      addElementAtPoint({
+        type:"group",
         children:children,
       });
       // 扣 credits 逻辑
+      const token = await auth.getCanvaUserToken();
       const updatedUser = await subCredits(token, "imageFill");
       setCredits(updatedUser.image_fill_credits);
       setUser(prevUser => prevUser ? { ...prevUser, image_fill_credits: updatedUser.image_fill_credits } : null);
@@ -560,6 +581,17 @@ export const App = () => {
       setHasSearchResults(false)
     }
 }
+
+  const truncateText = (text: string, maxLength: number) => {
+    if (text.length <= maxLength) return text;
+    
+    const firstWord = text.split(' ')[0];
+    if (firstWord.length >= maxLength) {
+      return firstWord.slice(0, maxLength) + '...';
+    }
+    
+    return text.slice(0, maxLength).trim() + '...';
+  };
 
   function handleTabChange(id: string) {
     if(id==='shapefill'){
@@ -696,15 +728,46 @@ export const App = () => {
                                   display: 'flex',
                                   flexDirection: 'column', // 让 icon 和 Text 垂直排列
                                   alignItems: 'center', // 水平居中对齐
+                                  justifyContent: 'space-between',
                                   cursor: 'pointer',
                                   border: selectedIcon === icon.id ? '1px solid #A570FF' : '1px solid transparent', // 选中时边框加重显示颜色
                                   padding: '8px', // 添加一些内边距，让边框效果更明显
                                   borderRadius: '4px', // 添加圆角边框
+                                  width: '100%',
+                                  aspectRatio: '1 / 1',  // 保持正方形比例
+                                  boxSizing: 'border-box',
                                 }}
                                 role="button" // 使 div 拥有按钮的特性
+                                title={icon.name} // 添加这一行来显示完整的图标名称
                               >
-                                <img src={icon.url} width="32" height="32" alt={icon.name}></img>
-                                <Text>{icon.name}</Text>
+                                <div style={{
+                                  width: '100%',
+                                  height: '60%',  // 图标占据容器的 70% 高度
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}>
+                                  <img 
+                                    src={icon.url} 
+                                    alt={icon.name}
+                                    style={{
+                                      maxWidth: '100%',
+                                      maxHeight: '100%',
+                                      objectFit: 'contain',
+                                    }}
+                                  />
+                                </div>
+                                <div style={{
+                                  width: '100%',
+                                  height: '30%',  // 文本占据容器的 30% 高度
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}>
+                                  <Text size="small" alignment="center">
+                                    {truncateText(icon.name, 7)}
+                                  </Text>
+                                </div>
                               </div>
                             </Rows>
                           ))}
@@ -747,7 +810,7 @@ export const App = () => {
                   />
                   {!sysError?.status && (
                       <Box paddingY="1u">
-                        <Text size="small">Maximum file size: 4MB</Text>
+                        <Text size="small">Maximum file size: 4MB.Acceptable formats:SVG</Text>
                       </Box>
                   )}
                   {svgName && !(sysError?.status && sysError?.type === "fileSize") &&(
@@ -774,7 +837,7 @@ export const App = () => {
                             control={(props) => (
                               <Box paddingStart="1.5u">
                                 <Slider
-                                  defaultValue={0}
+                                  defaultValue={svgConfig.value}
                                   max={100}
                                   min={0}
                                   step={1}
@@ -947,7 +1010,7 @@ export const App = () => {
                           }}
                         />
                         {!sysError?.status && (
-                          <Text size="small">Maximum file size: 4MB</Text>
+                          <Text size="small">Maximum file size: 4MB.Acceptable formats:JPG,PNG</Text>
                         )}
                         {fileName && !(sysError?.status && sysError?.type === "fileSize") && (
                           <FileInputItem 
@@ -961,9 +1024,19 @@ export const App = () => {
                         )}
                         </>
                       ):(
-                        <Alert tone="info">
-                            Select an image in your design to fill by percent
-                        </Alert>                  
+                        <>            
+                          {!currentSelection || currentSelection.count === 0 ? (
+                            <Alert tone="info">
+                              Select an image in your design to fill by percent
+                            </Alert>
+                          ) : currentSelection.count > 1 ? (
+                            <Alert tone="critical">
+                              Please select only one image.
+                            </Alert>
+                          ) : (
+                            <></>
+                          )}
+                        </>        
                       )}
                         {((selectedOption === 'upload' && file) || (selectedOption === 'select' && currentSelection.count > 0)) && !(sysError?.status && sysError.type === "fileSize") && (
                           <>
@@ -979,9 +1052,10 @@ export const App = () => {
                                   }}
                                 />
                               )}
-                            />
+                              />
                             <FormField
                               label="Fill direction"
+                              error={sysError?.errMsg}
                               control={(props) => (
                                 <Select
                                   {...props}
@@ -990,9 +1064,11 @@ export const App = () => {
                                     { value: "vertical", label: "Vertical" },
                                     { value: "horizontal", label: "Horizontal" },
                                   ]}
-                                  onChange={(value) =>
-                                    setFillPattern(value)
-                                  }
+                                  value={fillPattern}
+                                  onChange={(value) => {
+                                    setFillPattern(value);
+                                    setSysError({ status: false, type: "", errMsg: "" })
+                                  }}
                                 />
                               )}
                             />
@@ -1047,7 +1123,7 @@ export const App = () => {
                                         control={(props) => (
                                           <Box paddingStart="1.5u">
                                             <Slider
-                                              defaultValue={0}
+                                              defaultValue={segment.value}
                                               max={100}
                                               min={0}
                                               step={1}
@@ -1077,7 +1153,7 @@ export const App = () => {
                                       </Text>
                                       <Box paddingStart="1.5u">
                                         <Slider
-                                          defaultValue={0}
+                                          defaultValue={segment.opacity}
                                           max={100}
                                           min={0}
                                           step={1}
@@ -1160,8 +1236,9 @@ export const App = () => {
                   placeholder="Search Icons"
                   value={searchKeyword}
                   onChange={(value) => setSearchKeyword(value)}
-                  onChangeComplete={(keyword)=>{
-                    const token = getToken()
+                  onChangeComplete={async (keyword)=>{
+                    // const token = getToken()
+                    const token = await auth.getCanvaUserToken();
                     searchIcons(token as string,keyword) 
                   }}
                 />
@@ -1175,22 +1252,53 @@ export const App = () => {
                     spacing="1u"
                   >
                     {iconsResult.map((icon, index) => (
-                      <Rows key={index} align="center" spacing="1u">
+                       <Rows key={index} align="center" spacing="1u">
                         <div
-                          onClick={() => handleIconClickInList(icon)}
+                          onClick={()=>{handleIconClick(icon)}}
                           style={{
                             display: 'flex',
                             flexDirection: 'column', // 让 icon 和 Text 垂直排列
                             alignItems: 'center', // 水平居中对齐
+                            justifyContent: 'space-between',
                             cursor: 'pointer',
-                            border: selectedIcon === icon.id ? '1px solid #A570FF' : '1px solid transparent', // 选中时边框加重并显示颜色
+                            border: selectedIcon === icon.id ? '1px solid #A570FF' : '1px solid transparent', // 选中时边框加重显示颜色
                             padding: '8px', // 添加一些内边距，让边框效果更明显
-                            borderRadius: '4px', // 添加圆��边框
+                            borderRadius: '4px', // 添加圆角边框
+                            width: '100%',
+                            aspectRatio: '1 / 1',  // 保持正方形比例
+                            boxSizing: 'border-box',
                           }}
                           role="button" // 使 div 拥有按钮的特性
+                          title={icon.name} // 添加这一行来显示完整的图标名称
                         >
-                          <img src={icon.url} width="32" height="32" alt={icon.name} />
-                          <Text>{icon.name}</Text>
+                          <div style={{
+                            width: '100%',
+                            height: '60%',  // 图标占据容器的 70% 高度
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}>
+                            <img 
+                              src={icon.url} 
+                              alt={icon.name}
+                              style={{
+                                maxWidth: '100%',
+                                maxHeight: '100%',
+                                objectFit: 'contain',
+                              }}
+                            />
+                          </div>
+                          <div style={{
+                            width: '100%',
+                            height: '30%',  // 文本占据容器的 30% 高度
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}>
+                            <Text size="small" alignment="center">
+                              {truncateText(icon.name, 7)}
+                            </Text>
+                          </div>
                         </div>
                       </Rows>
                     ))}
