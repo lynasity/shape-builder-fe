@@ -27,6 +27,14 @@ import {
   Alert,
   LoadingIndicator,
   Switch,
+  ImageCard,
+  NumberInput,
+  Column,
+  ArrowDownIcon,
+  OpenInNewIcon,
+  RadioGroup,
+  PlusIcon,
+  TrashIcon,
 } from "@canva/app-ui-kit";
 // import { addNativeElement } from "@canva/design";
 import * as React from "react";
@@ -75,7 +83,7 @@ type icon = {
 const defaultSegment:segment[] = 
 [
   {
-    name:"Portion 1",
+    name:"Segment 1",
     color:"#dbdbdb",
     value:0,
     opacity:60
@@ -157,7 +165,7 @@ export const App = () => {
   // 在组件内部添加新的状态
   const [searchKeyword, setSearchKeyword] = React.useState('');
   const [shouldRefreshData, setShouldRefreshData] = React.useState(true);
-  const [selectedOption, setSelectedOption] = React.useState('select');
+  // const [selectedOption, setSelectedOption] = React.useState('select');
   const [selectedIconOption, setSelectedIconOption] = React.useState('library');
   const [activeTab, setActiveTab] = React.useState<'shapefill' | 'imagefill'>('shapefill');
   const [hasSearchResults, setHasSearchResults] = React.useState(true);
@@ -172,11 +180,19 @@ export const App = () => {
   const [sysError,setSysError] = React.useState<error>();
   // 用户状态标识
   const [isOffline, setIsOffline] = React.useState(false);
+  const [isLogined, setIsLogined] = React.useState(false);
+  const [tipStatus, setTipStatus] = React.useState(true);
   const [removeBackground, setRemoveBackground] = React.useState(false);
-  
+  const [svgPreviewUrl, setSvgPreviewUrl] = React.useState<string | null>(null);
+  const [imgPreviewUrl, setImgPreviewUrl] = React.useState<string | null>(null);
+  const [imgSelectionUrl, setImgSelectionUrl] = React.useState<string | null>(null);
+  const [proMonthLink, setProMonthLink] = React.useState('https://funkersoft.lemonsqueezy.com/buy/13434505-1d74-46e7-9d6d-59ee48bbb404');
+  const [proAnnualLink, setProAnnualLink] = React.useState('https://funkersoft.lemonsqueezy.com/buy/1e39fbdd-d986-429c-a1a0-1c3b3ea385d2');
+  const proMonthID = 524259;
+  const proAnnualID = 524260;
   const addSegment = () => {
     const newSegment: segment = {
-      name: `Portion ${segments.length + 1}`,
+      name: `Segment ${segments.length + 1}`,
       color: "#000000", // 默认颜色，可以动态修改
       value: 0 ,// 默认百分比值
       opacity:60
@@ -192,12 +208,14 @@ export const App = () => {
       setUser(userInfo as any);
       setCredits(userInfo.shape_fill_credits);
       setIsOffline(false); // 重置离线状态
+      setIsLogined(true);
       return token;
     } catch (error) {
       // 无法正常获取 token 时，给个空token
       // const token ='';
       console.error('Failed to get user info:', error);
       setIsOffline(true); // 设置离线状态
+      setIsLogined(false); // 设置离线状态
       // setToken(null);
       throw error;
     }
@@ -360,7 +378,7 @@ export const App = () => {
       setIsGenerating(false);
     }
   };
-
+ 
   async function getSelectionImage(): Promise<string> {
     const draft = await currentSelection.read();
     const isMultiple = draft.contents.length > 1;
@@ -378,7 +396,10 @@ export const App = () => {
       const blob = await response.blob();
       const reader = new FileReader();
       return new Promise((resolve, reject) => {
-        reader.onloadend = () => resolve(reader.result?.toString() || '');
+        reader.onloadend = () => {
+          const result = reader.result?.toString() || '';
+          resolve(result);
+        };
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
@@ -387,8 +408,34 @@ export const App = () => {
       // setNoticeError('Something went wrong. Please try again later.')
       return ''
     }
-
   }
+
+  async function getSelectionImageUrl(): Promise<void> {
+    const draft = await currentSelection.read();
+    const isMultiple = draft.contents.length > 1;
+    if (isMultiple) return;
+    const content = draft.contents[0];
+    if (!content) {
+      return;
+    }
+    try {
+      const { url } = await getTemporaryUrl({
+        type: "image",
+        ref: content.ref,
+      });
+      setImgSelectionUrl(url); // 更新 imgSelectionUrl 状态
+    } catch (error) {
+      console.log(error);
+    }
+  }
+
+  // 在组件加载时或选择更改时调用 getSelectionImageUrl
+  React.useEffect(() => {
+    if (currentSelection.count === 1) {
+      getSelectionImageUrl();
+    }
+  }, [currentSelection]);
+
   const startFill = async ()=>{
     setIsGenerating(true);
     setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
@@ -401,24 +448,20 @@ export const App = () => {
     try {
       // 获取抠图+比例填充后的图像、和对应的高和宽
       let originImage:string
-      if(selectedOption === 'upload'){
-        // 获取用户上传文件前，确认文件是否正常获取到
-        if (!file) {
-          throw new Error('No image file selected');
-        }
-        originImage = file as string
-      }else{
-        // 执行下读取 canva 图片元素的操作,执行前确保用户只选择了 1 张图片
-        if(currentSelection.count>1){
-          // setSysError({status: true, type: "imageError", errMsg: "lease select only one image"});
-          return;
-        }
+      // 执行下读取 canva 图片元素的操作,执行前确保用户只选择了 1 张图片
+      if(currentSelection.count>1){
+        // setSysError({status: true, type: "imageError", errMsg: "lease select only one image"});
+        return;
+      }
+      if(currentSelection.count==1){
         originImage = await getSelectionImage()
         // 判断能否成功读取用户选择的文件
         if (!originImage) {
           throw new Error('Failed to get selected image');
         }
-      }
+      }else{
+        originImage = file as string
+      }  
       
       const {imgUrl,imgWidth,imgHeight} = await createPercentFill(originImage,segments,fillPattern as string,removeBackground)
       // 初始化 children 用于存放所有的动态生成的元素
@@ -522,7 +565,7 @@ export const App = () => {
     }
   }
 
-  // 定义生成错误提示信息的函数
+  // 定义生成错误提示信息的函
   const setErrorMessage = (e: string) => {
     setIsGenerating(false);
     // 将函数传入的 e 错误信息，set 到变error中
@@ -660,15 +703,49 @@ export const App = () => {
 // setInput((i) => ({ ...i, format: BarcodeFormat[value] }))，i 指代的是当前对象，..i指代当前对象的所有属性，通过后续的format赋值实现重写
   return (
     <div className={styles.scrollContainer}>
+       {((user?.status=='on-trial'||user?.status=='expired') && tipStatus && isLogined && user?.variant_id !== proMonthID && user?.variant_id !== proAnnualID && (credits ?? 0) <= 0) && activeTab=='shapefill' && (
+       <Alert
+          title="You don’t have enough PercentFill credits."
+          tone="critical"
+          onDismiss={() => {setTipStatus(false)}}
+       >
+          Try again next month, or{" "}  
+          <Link
+            href={`${proMonthLink}?checkout[custom][user_id]=${user?.userid}`}
+            id="id"
+            requestOpenExternalUrl={() => directToLs(`${proMonthLink}`)}
+            title="PercentFill Pro Plan"
+          >
+            upgrade to Pro
+          </Link>
+       </Alert>
+    )}
+    {(user?.status==='active' &&tipStatus && isLogined && activeTab=='imagefill' && user?.variant_id === proMonthID && (credits ?? 0) <= 0) && (
+       <Alert
+          title="You don’t have enough PercentFill credits."
+          tone="critical"
+          onDismiss={() => {setTipStatus(false)}}
+       >
+          Try again next month, or{" "} 
+          <Link
+            href={`${proAnnualLink}?checkout[custom][user_id]=${user?.userid}`}
+            id="id"
+            requestOpenExternalUrl={() => directToLs(`${proAnnualLink}`)}
+            title="PercentFill Pro Plan annual membership."
+          >
+            upgrade to Pro Annual
+          </Link>
+       </Alert>
+    )}
     {currentPage==='main'&&(
       <Tabs onSelect={(id)=>{handleTabChange(id)}}>
-        <Rows spacing="1u">
+        <Rows spacing="2u">
           <TabList>
             <Tab id="shapefill">
-              Fill icon
+              Icon
             </Tab>
             <Tab id="imagefill">
-              Fill image
+              Image
             </Tab>
           </TabList>
           <TabPanels>
@@ -685,7 +762,7 @@ export const App = () => {
                 defaultValue="library"
                 options={[
                   {
-                    label: 'Select from library',
+                    label: 'Library',
                     value: 'library'
                   },
                   {
@@ -699,8 +776,8 @@ export const App = () => {
               />
               {selectedIconOption === 'library' && (
                 <>
-                <Box display='flex' justifyContent='spaceBetween' paddingY="2u" paddingEnd="2u">
-                    <Text tone='primary' variant='bold'>Icons</Text>
+                <Box display='flex' justifyContent='spaceBetween' paddingY="1u" paddingEnd="0">
+                    <Text tone='primary' variant='bold'>Select icon</Text>
                     <Text tone='secondary' size='small'>
                         <div className={styles.seeAll} onClick={() => goToIconList()}>
                             See all
@@ -709,66 +786,44 @@ export const App = () => {
                 </Box>
                   <Rows spacing="3u">
                     <Rows spacing="2u">
-                     <Box padding="1u">
+                     <Box paddingY="1u">
                       {icons.length === 0 &&(
                           <LoadingIndicator size="medium" />
                       )}
                       {icons.length > 0 && (
                         <Grid
                           alignY="center"
-                          columns={5}
+                          columns={6}
                           spacing="1u"
                         >
                           {/* 只展示 12 个元素 */}
-                          {icons.slice(0, 10).map((icon, index) => (
+                          {icons.slice(0, 12).map((icon, index) => (
                             <Rows key={index} align="center" spacing="1u">
-                              <div
-                                onClick={()=>{handleIconClick(icon)}}
-                                style={{
-                                  display: 'flex',
-                                  flexDirection: 'column', // 让 icon 和 Text 垂直排列
-                                  alignItems: 'center', // 水平居中对齐
-                                  justifyContent: 'space-between',
-                                  cursor: 'pointer',
-                                  border: selectedIcon === icon.id ? '1px solid #A570FF' : '1px solid transparent', // 选中时边框加重显示颜色
-                                  padding: '8px', // 添加一些内边距，让边框效果更明显
-                                  borderRadius: '4px', // 添加圆角边框
+                              {/* <Box padding="0" background="neutralLow"> */}
+                              <div style={
+                                {
                                   width: '100%',
-                                  aspectRatio: '1 / 1',  // 保持正方形比例
-                                  boxSizing: 'border-box',
-                                }}
-                                role="button" // 使 div 拥有按钮的特性
-                                title={icon.name} // 添加这一行来显示完整的图标名称
-                              >
-                                <div style={{
-                                  width: '100%',
-                                  height: '60%',  // 图标占据容器的 70% 高度
+                                  height: '100%', 
                                   display: 'flex',
                                   alignItems: 'center',
                                   justifyContent: 'center',
-                                }}>
-                                  <img 
-                                    src={icon.url} 
+                                  // background: "var(--ui-kit-color-neutral-low)",
+                                  borderRadius:12,
+                                }
+                                }>
+                                  <ImageCard
+                                    borderRadius="standard"
                                     alt={icon.name}
-                                    style={{
-                                      maxWidth: '100%',
-                                      maxHeight: '100%',
-                                      objectFit: 'contain',
-                                    }}
-                                  />
-                                </div>
-                                <div style={{
-                                  width: '100%',
-                                  height: '30%',  // 文本占据容器的 30% 高度
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                }}>
-                                  <Text size="small" alignment="center">
-                                    {truncateText(icon.name, 7)}
-                                  </Text>
-                                </div>
+                                    ariaLabel="Select icon to be filled"
+                                    onClick={() => {handleIconClick(icon)}}
+                                    selected={selectedIcon === icon.id} // 根据 selectedIcon 状态动态设置
+                                    selectable
+                                    // thumbnailHeight={40}
+                                    thumbnailUrl={icon.url} 
+                                    thumbnailAspectRatio={1}
+                                  />   
                               </div>
+                              {/* </Box> */}
                             </Rows>
                           ))}
                         </Grid>
@@ -800,6 +855,7 @@ export const App = () => {
                       reader.onloadend = () => {
                         const base64URL = reader.result; // 获取DataURL（Base64编）
                         // setFile(base64URL as string);
+                        setSvgPreviewUrl(base64URL as string); // 设置用于 img 标签的 Data URL
                         setUploadedSvg(uploadedImg)
                       };
                       reader.readAsDataURL(uploadedImg); // 将文件读取为DataURL（Base64编码）
@@ -808,9 +864,9 @@ export const App = () => {
                       setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
                     }}
                   />
-                  {!sysError?.status && (
+                  {!uploadedSvg && !sysError?.status && (
                       <Box paddingY="1u">
-                        <Text size="small">Maximum file size: 4MB.Acceptable formats:SVG</Text>
+                        <Text size="small" variant="regular" tone="tertiary">Maximum file size: 4MB. Accepted file formats: SVG.</Text>
                       </Box>
                   )}
                   {svgName && !(sysError?.status && sysError?.type === "fileSize") &&(
@@ -823,20 +879,46 @@ export const App = () => {
                           setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态 
                         }}
                       />
+                      {uploadedSvg && (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "72px",
+                            borderRadius: "8px", // 设置圆角为 8px
+                            background: "var(--ui-kit-color-neutral-low)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            marginTop: "12px"
+                          }}
+                        >
+                          {svgPreviewUrl && (
+                          <img
+                            src={svgPreviewUrl}
+                            alt={svgName}
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: '100%',
+                              objectFit: 'contain',
+                            }}
+                          />
+                        )}
+                        </div>
+                      )}
                     </>
                   )}
                 </Box>
               )}
                   {((selectedIconOption === 'library' && selectedIcon !== null) || (selectedIconOption === 'uploadSvg' && uploadedSvg)) && (
                     <>
-                      <Rows spacing="1.5u">
-                        <Box paddingBottom="1u">
+                      <Rows spacing="2u">
+                        <Box paddingTop="1u">
                           <FormField
                             error={error}
-                            label="Percentage"
+                            label="Fill percentage(%)"
                             control={(props) => (
-                              <Box paddingStart="1.5u">
-                                <Slider
+                              <Box paddingStart="0">
+                                {/* <Slider
                                   defaultValue={svgConfig.value}
                                   max={100}
                                   min={0}
@@ -846,31 +928,35 @@ export const App = () => {
                                     updatedSvgConfig.value = newValue
                                     setSvgConfig(updatedSvgConfig)
                                   }}
+                                /> */}
+                                <NumberInput
+                                  decrementAriaLabel="Decrement example number"
+                                  defaultValue={svgConfig.value}
+                                  maximumFractionDigits={0}
+                                  hasSpinButtons
+                                  incrementAriaLabel="Increment example number"
+                                  step={1}
+                                  pattern="^(100|[1-9]?[0-9])$"
+                                  onChangeComplete={(newValue)=>{
+                                    const updatedSvgConfig ={...svgConfig}
+                                    updatedSvgConfig.value = newValue
+                                    setSvgConfig(updatedSvgConfig)
+                                  }}
+                                  max={100}
+                                  min={0}
                                 />
                               </Box>
                             )}
                           />
                         </Box>
                         <Box padding="0">
-                          <Rows spacing="1u">
+                          <Columns align="spaceBetween" spacing="1u" alignY="center">
+                          <Column width="content">
                             <Text>
-                              <b>Background color</b>
+                                <b>Fill color</b>
                             </Text>
-                            <ColorSelector
-                                onChange={(data) =>       {
-                                  const updatedSvgConfig = {...svgConfig}
-                                  updatedSvgConfig.backgroundColor = data
-                                  setSvgConfig(updatedSvgConfig)
-                                }}
-                                color={svgConfig.backgroundColor}
-                              />
-                          </Rows>
-                        </Box>
-                        <Box padding="0">
-                          <Rows spacing="1u">
-                            <Text>
-                              <b>Fill color</b>
-                            </Text>
+                          </Column>
+                          <Column width="content">
                             <ColorSelector
                                 onChange={(data) =>       {
                                   const updatedSvgConfig = {...svgConfig}
@@ -879,33 +965,78 @@ export const App = () => {
                                 }}
                                 color={svgConfig.color}
                               />
-                          </Rows>
+                            </Column>
+                          </Columns>
+                        </Box>
+                        <Box padding="0">
+                        <Columns align="spaceBetween" spacing="1u" alignY="center">
+                          <Column width="content">
+                            <Text>
+                              <b>Background color</b>
+                            </Text>
+                          </Column>
+                          <Column width="content">
+                            <ColorSelector
+                                onChange={(data) =>       {
+                                  const updatedSvgConfig = {...svgConfig}
+                                  updatedSvgConfig.backgroundColor = data
+                                  setSvgConfig(updatedSvgConfig)
+                                }}
+                                color={svgConfig.backgroundColor}
+                              />
+                            </Column>
+                        </Columns>
                         </Box>
                       </Rows>
-                      <Box paddingY="2u">
+                      <Box paddingTop="2u" paddingBottom="1.5u"  display="flex" flexDirection="column" alignItems="center">
                         <Button
                           variant="primary"
                           onClick={startSvgFill}
                           stretch
                           loading={isGenerating ? true : undefined} // 条渲染 loading 属性
-                          disabled={isGenerating || (user?.variant_id !== 493905 && user?.variant_id !== 496415 && (credits ?? 0) <= 0)}
+                          disabled={isGenerating || (user?.variant_id !== proMonthID && user?.variant_id !== proAnnualID && (credits ?? 0) <= 0)}
                           >
                           Generate
                         </Button>
                       </Box> 
                       {(user?.status == 'on-trial' || user?.status == 'expired') && (
                         <>
-                        <Box paddingY="0">
-                          <Text>
-                            The credits you can use to fill Icons remaining {credits} in this month. Get unlimited usage by{' '}
+                        <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
+                          <Text size="small" variant="bold">
+                            Use 1 of {credits} Percentfill credits.Renews monthly.
+                          </Text>
+                          <Text size="small" variant="regular" tone="tertiary">
+                             Get unlimited usage.
                             {user?.userid && (
                               <Link
-                                href={`https://funkersoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8?checkout[custom][user_id]=${user.userid}`}
+                                href={`${proMonthLink}?checkout[custom][user_id]=${user.userid}`}
                                 id="id"
-                                requestOpenExternalUrl={() => directToLs('https://manysoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8')}
-                                title="PartiFill Pro Plan"
+                                requestOpenExternalUrl={() => directToLs((`${proMonthLink}`))}
+                                title="PercentFill Pro Plan"
                               >
-                                upgrading to a membership
+                                Upgrade
+                               </Link>
+                            )}
+                          </Text>
+                        </Box>
+                        </>
+                      )}
+                      {/* 月付计划 */}
+                      {(user?.status == 'active' && activeTab=='shapefill' && user?.variant_id === proMonthID) && (
+                        <>
+                        <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
+                          <Text size="small" variant="bold">
+                            You are using PercentFill Pro Monthly
+                          </Text>
+                          <Text size="small" variant="regular" tone="tertiary">
+                            {user?.userid && (
+                              <Link
+                                href={`https://funkersoft.lemonsqueezy.com/billing`}
+                                id="id"
+                                requestOpenExternalUrl={() => directToLs('https://funkersoft.lemonsqueezy.com/billing')}
+                                title="Manage subscription"
+                              >
+                                Manage subscription
                                </Link>
                             )}
                           </Text>
@@ -928,18 +1059,30 @@ export const App = () => {
               {(user?.status === 'on-trial' || user?.status === 'expired') && (
                 <>
                 <Rows spacing="2u">
+                  <Alert tone="info">
+                        To access this feature, 
+                        <Link
+                        href={`${proMonthLink}?checkout[custom][user_id]=${user.userid}`}
+                        id="id"
+                        requestOpenExternalUrl={() => directToLs(`${proMonthLink}`)}
+                        title="PercentiFill Pro Plan"
+                         >
+                           upgrade to PercentFill Pro
+                        </Link>
+                  </Alert>
                   <VideoCard
                     borderRadius="none"
                     mimeType="video/mp4"
                     onClick={() => {}}
                     onDragStart={() => {}}
-                    thumbnailUrl="https://percentfill.com/%E5%B0%81%E9%9D%A2%E5%9B%BE.png"
+                    thumbnailUrl="https://percentfill.com/imagefillcover.png"
                     videoPreviewUrl="https://percentfill.com/imagefill.mp4"
                   />
-                    <Text>Fill images by percentage with PercentFill. Upgrade to the Pro plan to unlock</Text>
+                    {/* <Text>Fill images by percentage with PercentFill. Upgrade to the Pro plan to unlock</Text> */}
                     <Button 
                     variant="primary"
                     stretch
+                    icon={OpenInNewIcon}
                     onClick={()=>directToLs('https://manysoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8')}
                     >
                       Upgrade
@@ -951,7 +1094,7 @@ export const App = () => {
                {user?.status === 'active' && (
                 <>
                   <Rows spacing="1.5u">
-                  <SegmentedControl
+                  {/* <SegmentedControl
                     defaultValue="select"
                     options={[
                       {
@@ -966,105 +1109,138 @@ export const App = () => {
                     onChange={(value)=>{
                       setSelectedOption(value);  
                     }}
-                  />
-                  {selectedOption === 'upload' ?(
+                  /> */}
                         <>
-                        {sysError?.status && sysError.type === "fileSize" && (
-                          <Alert
-                            onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
-                            tone="warn"
-                          >
-                            {sysError.errMsg}
-                          </Alert>
-                        )}
-                        <FileInput
-                          // {...props}
-                          stretchButton
-                          accept={[
-                            'image/png',
-                            'image/jpeg',
-                            'image/jpg'
-                          ]}
-                          onDropAcceptedFiles={(files: File[]) => {
-                            const uploadedImg = files[0];
-                            const maxSizeInBytes = 4 * 1024 * 1024; // 4MB
-
-                            if (uploadedImg.size > maxSizeInBytes) {
-                              setSysError({
-                                status: true,
-                                type: "fileSize",
-                                errMsg: 'File size exceeds 4MB, cannot upload'
-                              });
-                              return;
-                            }
-
-                            const reader = new FileReader(); // 创建FileReader对象
-                            reader.onloadend = () => {
-                              const base64URL = reader.result; // 获取DataURL（Base64编）
-                              setFile(base64URL as string);
-                            };
-                            reader.readAsDataURL(uploadedImg); // 将文件读取为DataURL（Base64编码）
-                            // 设置文件名
-                            setFileName(uploadedImg.name);
-                            setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
-                          }}
-                        />
-                        {!sysError?.status && (
-                          <Text size="small">Maximum file size: 4MB.Acceptable formats:JPG,PNG</Text>
-                        )}
-                        {fileName && !(sysError?.status && sysError?.type === "fileSize") && (
-                          <FileInputItem 
-                            label={fileName}
-                            onDeleteClick={() => {
-                              setFile(false); // 将 null 改为 false
-                              setFileName('');
-                              setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
-                            }}
-                          />
-                        )}
-                        </>
-                      ):(
-                        <>            
-                          {!currentSelection || currentSelection.count === 0 ? (
-                            <Alert tone="info">
-                              Select an image in your design to fill by percent
-                            </Alert>
-                          ) : currentSelection.count > 1 ? (
-                            <Alert tone="critical">
-                              Please select only one image.
-                            </Alert>
-                          ) : (
-                            <></>
-                          )}
-                        </>        
-                      )}
-                        {((selectedOption === 'upload' && file) || (selectedOption === 'select' && currentSelection.count > 0)) && !(sysError?.status && sysError.type === "fileSize") && (
+                        {currentSelection.count === 0 && (
                           <>
-                             <FormField
-                              label="Image adjustments"
-                              control={() => (
-                                <Switch
-                                  value={removeBackground}
-                                  label="Remove background"
-                                  description="Enable to remove the background. No need to toggle if your image has no background. "
-                                  onChange={(value)=>{
-                                    setRemoveBackground(value);
-                                  }}
-                                />
-                              )}
+                            {sysError?.status && sysError.type === "fileSize" && (
+                              <Alert
+                                onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
+                                tone="warn"
+                              >
+                                {sysError.errMsg}
+                              </Alert>
+                            )}
+                            <Text>
+                              <b>Upload or select image</b>
+                            </Text>
+                            <FileInput
+                              stretchButton
+                              accept={[
+                                'image/png',
+                                'image/jpeg',
+                                'image/jpg'
+                              ]}
+                              onDropAcceptedFiles={(files: File[]) => {
+                                const uploadedImg = files[0];
+                                const maxSizeInBytes = 4 * 1024 * 1024; // 4MB
+
+                                if (uploadedImg.size > maxSizeInBytes) {
+                                  setSysError({
+                                    status: true,
+                                    type: "fileSize",
+                                    errMsg: 'File size exceeds 4MB, cannot upload'
+                                  });
+                                  return;
+                                }
+
+                                const reader = new FileReader(); // 创建FileReader对象
+                                reader.onloadend = () => {
+                                  const base64URL = reader.result; // 获取DataURL（Base64编码）
+                                  setImgPreviewUrl(base64URL as string); // 更新 imgPreviewUrl 状态
+                                  setFile(base64URL as string);
+                                };
+                                reader.readAsDataURL(uploadedImg); // 将文件读取为DataURL（Base64编码）
+                                // 设置文件名
+                                setFileName(uploadedImg.name);
+                                setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
+                              }}
+                            />
+                            {!file && !sysError?.status && (
+                              <Text size="small" variant="regular" tone="tertiary">Maximum file size: 4MB. Accepted file formats: JPEG, PNG</Text>
+                            )}
+                            {fileName && !(sysError?.status && sysError?.type === "fileSize") && (
+                              <FileInputItem 
+                                label={fileName}
+                                onDeleteClick={() => {
+                                  setFile(false); // 将 null 改为 false
+                                  setFileName('');
+                                  setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
+                                }}
                               />
+                            )}
+                          </>
+                        )}
+                        </> 
+                         {/* 如果选了多个图片 */}
+                          {currentSelection && currentSelection.count > 1 && (
+                            <Alert
+                            title="Only one image can be processed at a time."
+                            tone="critical"
+                            // onDismiss={() => {}}
+                            >
+                              Please select a single image in your design.
+                              </Alert>
+                            )} 
+                        {(file || (currentSelection.count === 1)) && !(sysError?.status && sysError.type === "fileSize") && (
+                          <>
+                             <div
+                                style={{
+                                  width: "100%",
+                                  height: "144px",
+                                  borderRadius: "8px", // 设置圆角为 8px
+                                  background: "var(--ui-kit-color-neutral-low)",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  // marginTop: "8px",
+                                  marginBottom: "12px"
+                                }}
+                              >
+                                {(imgPreviewUrl || imgSelectionUrl) && (
+                                  <img
+                                    src={currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!}
+                                    alt={fileName}
+                                    style={{
+                                      maxWidth: '100%',
+                                      maxHeight: '100%',
+                                      objectFit: 'contain',
+                                    }}
+                                  />
+                                )}
+                             </div>
+                             <Columns alignY="center" align="spaceBetween" spacing="1u">
+                                <Column width="content">
+                                  <Text><b>Remove image background</b></Text>
+                                </Column>
+                                <Column width="content">
+                                  <Switch
+                                    value={removeBackground}
+                                    // label="Remove image background"
+                                    // description="Enable to remove the background. No need to toggle if your image has no background. "
+                                    onChange={(value)=>{
+                                      setRemoveBackground(value);
+                                    }}
+                                  />
+                                </Column>
+                             </Columns>
                             <FormField
                               label="Fill direction"
                               error={sysError?.errMsg}
                               control={(props) => (
-                                <Select
+                                <RadioGroup
                                   {...props}
-                                  stretch
+                                  defaultValue={fillPattern}
                                   options={[
-                                    { value: "vertical", label: "Vertical" },
-                                    { value: "horizontal", label: "Horizontal" },
+                                    {
+                                      label: 'Vertical',
+                                      value: 'vertical'
+                                    },
+                                    {
+                                      label: 'Horizontal',
+                                      value: 'horizontal'
+                                    },
                                   ]}
-                                  value={fillPattern}
                                   onChange={(value) => {
                                     setFillPattern(value);
                                     setSysError({ status: false, type: "", errMsg: "" })
@@ -1073,7 +1249,7 @@ export const App = () => {
                               )}
                             />
                             <Rows spacing="1.5u">
-                              <Text variant="bold">Portions</Text>
+                              {/* <Text variant="bold">Portions</Text> */}
                               {segments.map((segment, index) => (
                                 <Box
                                   key={index}
@@ -1083,31 +1259,21 @@ export const App = () => {
                                   paddingTop="1u"
                                   paddingBottom="1.5u"
                                 > 
-                                <Columns spacing="0" align="end" alignY="center">
-                                  {/* <Text size="medium" alignment="center">
-                                    Portion {index + 1}
-                                  </Text> */}
-                                      {index !== 0 && (
-                                        <Button
-                                          type="button"
-                                          variant="tertiary"
-                                          icon={ClearIcon}
-                                          ariaLabel="ariaLabel"
-                                          size="small"
-                                          onClick={() => removeSegment(index)}
-                                        />
-                                      )}
-                                    </Columns>
-                                  <Rows spacing="1u">
-                                    <Grid alignX="stretch" alignY="stretch" columns={1} spacing="1u">
+                                <Box paddingBottom="1u">
+                                  <Title size="small" alignment="start">
+                                    Segment {index + 1}
+                                  </Title>
+                                </Box>
+                                  <Rows spacing="1.5u">
+                                    <Grid alignX="stretch" alignY="stretch" columns={1} spacing="2u">
                                       <FormField
                                         error={error}
-                                        label="Label name"
+                                        label="Label (optional)"
                                         control={(props) => (
                                           <TextInput
                                             type="text"
                                             name="label"
-                                            defaultValue= {`Portion ${index + 1}`}
+                                            defaultValue= {`Segment ${index + 1}`}
                                             placeholder="input label name"
                                             onChange={(data) => {
                                               const updatedSegments = [...segments];
@@ -1119,87 +1285,148 @@ export const App = () => {
                                       />
                                       <FormField
                                         error={error}
-                                        label="Percentage"
+                                        label="Fill percentage(%)"
                                         control={(props) => (
-                                          <Box paddingStart="1.5u">
-                                            <Slider
-                                              defaultValue={segment.value}
-                                              max={100}
-                                              min={0}
-                                              step={1}
-                                              onChangeComplete={(preValue,newValue)=>{
-                                                console.log('slider-value='+newValue)
-                                                const updatedSegments = [...segments];
-                                                updatedSegments[index].value = newValue;
-                                                setSegments(updatedSegments);
-                                              }}
-                                            />
-                                          </Box>
+                                          <NumberInput
+                                            decrementAriaLabel="Decrement example number"
+                                            defaultValue={segment.value}
+                                            maximumFractionDigits={0}
+                                            hasSpinButtons
+                                            incrementAriaLabel="Increment example number"
+                                            step={1}
+                                            pattern="^(100|[1-9]?[0-9])$"
+                                            onChangeComplete={(newValue)=>{
+                                              const updatedSegments = [...segments];
+                                              updatedSegments[index].value = newValue;
+                                              setSegments(updatedSegments);
+                                            }}
+                                            max={100}
+                                            min={0}
+                                          />
+                                          // <Box paddingStart="1.5u">
+                                          //   <Slider
+                                          //     defaultValue={segment.value}
+                                          //     max={100}
+                                          //     min={0}
+                                          //     step={1}
+                                          //     onChangeComplete={(preValue,newValue)=>{
+                                          //       console.log('slider-value='+newValue)
+                                          //       const updatedSegments = [...segments];
+                                          //       updatedSegments[index].value = newValue;
+                                          //       setSegments(updatedSegments);
+                                          //     }}
+                                          //   />
+                                          // </Box>
                                         )}
                                       />
-                                      <Text>
-                                        <b>Fill color</b>
-                                      </Text>
-                                      <ColorSelector
-                                        onChange={(data) => {
-                                          const updatedSegments = [...segments];
-                                          updatedSegments[index].color = data;
-                                          setSegments(updatedSegments);
-                                        }}
-                                        color={segment.color}
-                                      />
-                                      <Text>
-                                        <b>Transparency</b>
-                                      </Text>
-                                      <Box paddingStart="1.5u">
-                                        <Slider
-                                          defaultValue={segment.opacity}
-                                          max={100}
-                                          min={0}
-                                          step={1}
+                                      <Columns align="spaceBetween" spacing="1u" alignY="baseline">
+                                        <Column width="content">
+                                          <Text>
+                                          <b>Fill color</b>
+                                          </Text>
+                                        </Column>
+                                      <Column width="content">
+                                        <ColorSelector
                                           onChange={(data) => {
                                             const updatedSegments = [...segments];
-                                            updatedSegments[index].opacity = data;
+                                            updatedSegments[index].color = data;
                                             setSegments(updatedSegments);
                                           }}
+                                          color={segment.color}
                                         />
-                                      </Box>
+                                      </Column>  
+                                      </Columns>
+                                      <Box>
+                                        <Text>
+                                          <b>Transparency</b>
+                                        </Text>
+                                        <Box paddingStart="1.5u">
+                                          <Slider
+                                            defaultValue={segment.opacity}
+                                            max={100}
+                                            min={0}
+                                            step={1}
+                                            onChange={(data) => {
+                                              const updatedSegments = [...segments];
+                                              updatedSegments[index].opacity = data;
+                                              setSegments(updatedSegments);
+                                            }}
+                                          />
+                                        </Box>
+                                      </Box>   
+                                      {index !== 0 && (            
+                                          <Button
+                                            alignment="center"
+                                            icon={TrashIcon}
+                                            onClick={() => removeSegment(index)}
+                                            variant="tertiary"
+                                          >
+                                            Delete
+                                          </Button>                                    
+                                      )}
                                     </Grid>
                                   </Rows>
-                        
                                 </Box>
                               ))}
                             </Rows>
                             <Button
                               variant="secondary"
+                              icon={PlusIcon}
                               onClick={addSegment}
                               stretch
                               disabled={isGenerating}
                             >
-                              Add portion
+                              Add segment
                             </Button>
-                            <Button
-                              variant="primary"
-                              onClick={startFill}
-                              stretch
-                              loading={isGenerating ? true : undefined} // 条件渲染 loading 属性
-                              disabled={isGenerating || (user?.variant_id !== 493905 && (credits ?? 0) <= 0)}                          >
-                              Generate
-                            </Button>
+                            <Box paddingTop="2u" paddingBottom="0"  display="flex" flexDirection="column" alignItems="center">
+                              <Button
+                                variant="primary"
+                                onClick={startFill}
+                                stretch
+                                loading={isGenerating ? true : undefined} // 条件渲染 loading 属性
+                                disabled={isGenerating || (user?.variant_id !== proAnnualID && (credits ?? 0) <= 0)}                          >
+                                Generate
+                              </Button>
+                            </Box>
                              {/* 如果是月付计，则会提示额度剩余可用额度,引导升级年会会员 */}
-                              {(user?.variant_id == 496415) && (
+                              {(user?.variant_id == proMonthID) && (
                                   <>
-                                  <Box paddingY="0">
-                                    <Text size="small">
-                                      The credits you can use to fill Image remaining {credits} in this month. Get unlimited usage by{' '}
+                                  <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
+                                    <Text size="small"  variant="bold">
+                                      Use 1 of {credits} Percentfill credits.Renews monthly.
+                                    </Text>
+                                    <Text>
+                                    Get unlimited usage.
                                       {user?.userid && (
                                         <Link
-                                          href={`https://funkersoft.lemonsqueezy.com/buy/c5d9b14f-b484-4a9c-af30-1f7af13eacf0?checkout[custom][user_id]=${user.userid}`}
+                                          href={`${proAnnualLink}?checkout[custom][user_id]=${user.userid}`}
                                           id="id"
-                                          requestOpenExternalUrl={() => directToLs('https://funkersoft.lemonsqueezy.com/buy/c5d9b14f-b484-4a9c-af30-1f7af13eacf0')}
-                                          title="PartiFill Pro Plan"
+                                          requestOpenExternalUrl={() => directToLs(`${proAnnualLink}`)}
+                                          title="PercentiFill Pro Plan Annual"
                                         >
-                                          upgrading to an annual membership
+                                          Upgrade
+                                        </Link>
+                                      )}
+                                    </Text>
+                                  </Box>
+                                  </>
+                                )}
+                                {/* 月付计划 */}
+                                {(user?.status == 'active' && activeTab=='imagefill' && user?.variant_id === proAnnualID) && (
+                                  <>
+                                  <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
+                                    <Text size="small" variant="bold">
+                                      You are using PercentFill Pro Annual
+                                    </Text>
+                                    <Text size="small" variant="regular" tone="tertiary">
+                                      {user?.userid && (
+                                        <Link
+                                          href={`https://funkersoft.lemonsqueezy.com/billing`}
+                                          id="id"
+                                          requestOpenExternalUrl={() => directToLs('https://funkersoft.lemonsqueezy.com/billing')}
+                                          title="Manage subscription"
+                                        >
+                                          Manage subscription
                                         </Link>
                                       )}
                                     </Text>
@@ -1224,13 +1451,15 @@ export const App = () => {
                 variant="tertiary"
                 icon={ArrowLeftIcon}
                 ariaLabel="ariaLabel"
-                size="medium"
+                size="small"
                 onClick={backToShapeFill}
               />
-            <Title>Icons</Title>  
+            <Box paddingStart="1u">
+              <Title size="xsmall">Icons</Title>  
+            </Box>
           </Columns>
           <Rows spacing="2u">
-            <Box paddingTop="2u">
+            {/* <Box paddingTop="2u">
               <SearchInputMenu
                   name="iconname"
                   placeholder="Search Icons"
@@ -1242,64 +1471,40 @@ export const App = () => {
                     searchIcons(token as string,keyword) 
                   }}
                 />
-            </Box> 
-            <Box paddingY="0">
+            </Box>  */}
+            <Box paddingY="2u">
               <Rows spacing="2u">  
                 {iconsResult.length > 0 ? (
                   <Grid
                     alignY="center"
-                    columns={5}
+                    columns={6}
                     spacing="1u"
                   >
                     {iconsResult.map((icon, index) => (
                        <Rows key={index} align="center" spacing="1u">
-                        <div
-                          onClick={()=>{handleIconClick(icon)}}
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column', // 让 icon 和 Text 垂直排列
-                            alignItems: 'center', // 水平居中对齐
-                            justifyContent: 'space-between',
-                            cursor: 'pointer',
-                            border: selectedIcon === icon.id ? '1px solid #A570FF' : '1px solid transparent', // 选中时边框加重显示颜色
-                            padding: '8px', // 添加一些内边距，让边框效果更明显
-                            borderRadius: '4px', // 添加圆角边框
+                        <div style={
+                          {
                             width: '100%',
-                            aspectRatio: '1 / 1',  // 保持正方形比例
-                            boxSizing: 'border-box',
-                          }}
-                          role="button" // 使 div 拥有按钮的特性
-                          title={icon.name} // 添加这一行来显示完整的图标名称
-                        >
-                          <div style={{
-                            width: '100%',
-                            height: '60%',  // 图标占据容器的 70% 高度
+                            height: '100%',  // 图标占据容器的 70% 高度
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                          }}>
-                            <img 
-                              src={icon.url} 
-                              alt={icon.name}
-                              style={{
-                                maxWidth: '100%',
-                                maxHeight: '100%',
-                                objectFit: 'contain',
-                              }}
-                            />
-                          </div>
-                          <div style={{
-                            width: '100%',
-                            height: '30%',  // 文本占据容器的 30% 高度
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}>
-                            <Text size="small" alignment="center">
-                              {truncateText(icon.name, 7)}
-                            </Text>
-                          </div>
+                            // background: "var(--ui-kit-color-neutral-low)",
+                            borderRadius:12,
+                          }
+                          }>
+                          <ImageCard
+                            borderRadius="standard"
+                            alt={icon.name}
+                            ariaLabel="Select icon to be filled"
+                            onClick={() => {handleIconClickInList(icon)}}
+                            selected={selectedIcon === icon.id} // 根据 selectedIcon 状态动态设置
+                            selectable
+                            thumbnailUrl={icon.url} 
+                            thumbnailAspectRatio={1}
+                          />
                         </div>
+
                       </Rows>
                     ))}
                   </Grid>
@@ -1316,3 +1521,4 @@ export const App = () => {
     </div>
   );
 };
+
