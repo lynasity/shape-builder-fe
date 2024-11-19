@@ -24,7 +24,7 @@
   "private": true,
   "dependencies": {
     "@canva/app-i18n-kit": "^0.0.1-beta.5",
-    "@canva/app-ui-kit": "^4.1.0",
+    "@canva/app-ui-kit": "^4.3.0",
     "@canva/asset": "^2.0.0",
     "@canva/design": "^2.2.1",
     "@canva/error": "^2.0.0",

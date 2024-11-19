@@ -50,12 +50,13 @@ import {auth} from "@canva/user"
 // import { getToken,setToken } from "./tokenManager";
 import {login} from "./account";
 import { subCredits } from './account';
-import { requestOpenExternalUrl } from "@canva/platform";
+import { getPlatformInfo,requestOpenExternalUrl } from "@canva/platform";
 // Images, plaintext, and videos
 // import { selection } from "@canva/design";
 import { getTemporaryUrl } from "@canva/asset";
 import { useSelection } from "utils/use_selection_hook";
 import { addElementAtPoint, GroupContentAtPoint } from "@canva/design";
+import { boolean } from "yargs";
 
 type segment = {
   // 图例颜色，也会用在填充颜色
@@ -190,6 +191,13 @@ export const App = () => {
   const [proAnnualLink, setProAnnualLink] = React.useState('https://funkersoft.lemonsqueezy.com/buy/1e39fbdd-d986-429c-a1a0-1c3b3ea385d2');
   const proMonthID = 524259;
   const proAnnualID = 524260;
+  const [canAcceptPayments, setCanAcceptPayments] = React.useState<boolean>(true);
+
+  React.useEffect(() => {
+    const platformInfo = getPlatformInfo();
+    setCanAcceptPayments(platformInfo.canAcceptPayments);
+  }, []); // 空依赖数组表示只在组件挂载时执行一次
+
   const addSegment = () => {
     const newSegment: segment = {
       name: `Segment ${segments.length + 1}`,
@@ -275,9 +283,16 @@ export const App = () => {
   async function directToLs(url) {
     if (!user?.userid) return; // 防御性检查，确保 userId 存在
     const lsURL = `${url}?checkout[custom][user_id]=${user.userid}`;
-    const response = await requestOpenExternalUrl({
-      url: lsURL,
-    });
+    const status = getPlatformInfo().canAcceptPayments;
+    setCanAcceptPayments(status);
+    if(status){
+      const response = await requestOpenExternalUrl({
+        url: lsURL,
+      });
+    }else{
+      // 当不能支付时，重新显示提示
+      setTipStatus(true);
+    }
   }
 
   const backToShapeFill = () => {
@@ -339,6 +354,24 @@ export const App = () => {
         svgConfig.backgroundColor
       );
 
+      // 设置固定的基准尺寸
+    const baseSize = 30; // 基准尺寸
+    const aspectRatio = result.viewBoxWidth / result.viewBoxHeigh;
+    // 计算实际渲染尺寸，保持宽高比
+    let renderWidth, renderHeight;
+    if (aspectRatio > 1) {
+      renderWidth = baseSize;
+      renderHeight = baseSize / aspectRatio;
+    } else {
+      renderHeight = baseSize;
+      renderWidth = baseSize * aspectRatio;
+    }
+     // 根据 SVG 尺寸计算合适的文字大小
+    //  const fontSize = Math.max(8,Math.min(renderWidth, renderHeight) * 0.1); // 文字大小为较短边的 15%
+    //  console.log('fontsize='+fontSize);
+     // 计算文字位置，使其位于 SVG 下方并居中
+     const textTop = renderHeight * 1.1; // 文字距离 SVG 底部 5 个单位
+    //  const textLeft = renderWidth / 2 - (fontSize * String(svgConfig.value).length) / 4 ; // 粗略估计文字宽度并居中
       addElementAtPoint({
         type:"group",
         children:[
@@ -346,18 +379,19 @@ export const App = () => {
             type: "image",
             altText:undefined,
             dataUrl: result.url,
-            width: result.viewBoxWidth / 12,
-            height: result.viewBoxHeigh / 12,
+            width: renderWidth,
+            height: renderHeight,
             top: 0,
             left: 0,
           },
           {
             type: "text",
+            width:renderWidth,
             children: [`${svgConfig.value}%`],
-            fontSize: 16,
+            fontSize: 10,
             textAlign: "center",
-            top: result.viewBoxHeigh / 12 + 5,
-            left: result.viewBoxWidth / 12 / 2 - 14,
+            top: textTop,
+            left: 0,
           }
         ],
       });
@@ -703,6 +737,15 @@ export const App = () => {
 // setInput((i) => ({ ...i, format: BarcodeFormat[value] }))，i 指代的是当前对象，..i指代当前对象的所有属性，通过后续的format赋值实现重写
   return (
     <div className={styles.scrollContainer}>
+      {!canAcceptPayments && tipStatus &&(
+          <Alert
+          title="Payments aren’t available on this device. "
+          tone="warn"
+          onDismiss={() => {setTipStatus(false)}}
+      >
+          To upgrade, open this app in a web browser.
+      </Alert>
+      )}
        {((user?.status=='on-trial'||user?.status=='expired') && tipStatus && isLogined && user?.variant_id !== proMonthID && user?.variant_id !== proAnnualID && (credits ?? 0) <= 0) && activeTab=='shapefill' && (
        <Alert
           title="You don’t have enough PercentFill credits."
@@ -751,12 +794,14 @@ export const App = () => {
           <TabPanels>
             <TabPanel id="shapefill">
               {sysError?.status && sysError.type==='svgFillError' && (
-                <Alert
-                  tone="critical"
-                  onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
-                >
-                  {sysError.errMsg}
-                </Alert>
+                <Box>
+                  <Alert
+                    tone="critical"
+                    onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
+                  >
+                    {sysError.errMsg}
+                  </Alert>
+                </Box>
               )}
               <SegmentedControl
                 defaultValue="library"
@@ -798,33 +843,17 @@ export const App = () => {
                         >
                           {/* 只展示 12 个元素 */}
                           {icons.slice(0, 12).map((icon, index) => (
-                            <Rows key={index} align="center" spacing="1u">
-                              {/* <Box padding="0" background="neutralLow"> */}
-                              <div style={
-                                {
-                                  width: '100%',
-                                  height: '100%', 
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  // background: "var(--ui-kit-color-neutral-low)",
-                                  borderRadius:12,
-                                }
-                                }>
-                                  <ImageCard
-                                    borderRadius="standard"
-                                    alt={icon.name}
-                                    ariaLabel="Select icon to be filled"
-                                    onClick={() => {handleIconClick(icon)}}
-                                    selected={selectedIcon === icon.id} // 根据 selectedIcon 状态动态设置
-                                    selectable
-                                    // thumbnailHeight={40}
-                                    thumbnailUrl={icon.url} 
-                                    thumbnailAspectRatio={1}
-                                  />   
-                              </div>
-                              {/* </Box> */}
-                            </Rows>
+                              <ImageCard
+                                borderRadius="standard"
+                                alt={icon.name}
+                                ariaLabel="Select icon to be filled"
+                                onClick={() => {handleIconClick(icon)}}
+                                selected={selectedIcon === icon.id} // 根据 selectedIcon 状态动态设置
+                                selectable
+                                // thumbnailHeight={50}
+                                thumbnailUrl={icon.url} 
+                                // thumbnailAspectRatio={1}
+                              />   
                           ))}
                         </Grid>
                       )}
@@ -1003,11 +1032,11 @@ export const App = () => {
                         <>
                         <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                           <Text size="small" variant="bold">
-                            Use 1 of {credits} Percentfill credits.Renews monthly.
+                            Use 1 of {credits} PercentFill credits. Renews monthly.{' '}
                           </Text>
                           <Text size="small" variant="regular" tone="tertiary">
-                             Get unlimited usage.
-                            {user?.userid && (
+                             Get unlimited usage.{' '}
+                            { user?.userid && (
                               <Link
                                 href={`${proMonthLink}?checkout[custom][user_id]=${user.userid}`}
                                 id="id"
@@ -1026,10 +1055,10 @@ export const App = () => {
                         <>
                         <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                           <Text size="small" variant="bold">
-                            You are using PercentFill Pro Monthly
+                            You are using PercentFill Pro Monthly.{''}
                           </Text>
                           <Text size="small" variant="regular" tone="tertiary">
-                            {user?.userid && (
+                            { user?.userid && (
                               <Link
                                 href={`https://funkersoft.lemonsqueezy.com/billing`}
                                 id="id"
@@ -1056,20 +1085,22 @@ export const App = () => {
                 </Alert>
               )}
               {/* 试用期或过期状态下，展示付费引导信息 */}
-              {(user?.status === 'on-trial' || user?.status === 'expired') && (
+              {( user?.status === 'on-trial' || user?.status === 'expired') && (
                 <>
                 <Rows spacing="2u">
-                  <Alert tone="info">
-                        To access this feature, 
-                        <Link
-                        href={`${proMonthLink}?checkout[custom][user_id]=${user.userid}`}
-                        id="id"
-                        requestOpenExternalUrl={() => directToLs(`${proMonthLink}`)}
-                        title="PercentiFill Pro Plan"
-                         >
-                           upgrade to PercentFill Pro
-                        </Link>
-                  </Alert>
+                  {canAcceptPayments && (
+                    <Alert tone="info">
+                      To access this feature,{' '}
+                      <Link
+                      href={`${proMonthLink}?checkout[custom][user_id]=${user.userid}`}
+                      id="id"
+                      requestOpenExternalUrl={() => directToLs(`${proMonthLink}`)}
+                      title="PercentiFill Pro Plan"
+                      >
+                        upgrade to PercentFill Pro
+                      </Link>
+                    </Alert>
+                  )}
                   <VideoCard
                     borderRadius="none"
                     mimeType="video/mp4"
@@ -1083,7 +1114,7 @@ export const App = () => {
                     variant="primary"
                     stretch
                     icon={OpenInNewIcon}
-                    onClick={()=>directToLs('https://manysoft.lemonsqueezy.com/buy/b101d5b7-f59c-4067-a7bd-65ca83b976c8')}
+                    onClick={()=>directToLs(`${proMonthLink}`)}
                     >
                       Upgrade
                     </Button>                   
@@ -1393,11 +1424,11 @@ export const App = () => {
                                   <>
                                   <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                                     <Text size="small"  variant="bold">
-                                      Use 1 of {credits} Percentfill credits.Renews monthly.
+                                      Use 1 of {credits} PercentFill credits. Renews monthly.{''}
                                     </Text>
                                     <Text>
-                                    Get unlimited usage.
-                                      {user?.userid && (
+                                    Get unlimited usage.{' '}
+                                      { user?.userid && (
                                         <Link
                                           href={`${proAnnualLink}?checkout[custom][user_id]=${user.userid}`}
                                           id="id"
@@ -1416,7 +1447,7 @@ export const App = () => {
                                   <>
                                   <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                                     <Text size="small" variant="bold">
-                                      You are using PercentFill Pro Annual
+                                      You are using PercentFill Pro Annual.{' '}
                                     </Text>
                                     <Text size="small" variant="regular" tone="tertiary">
                                       {user?.userid && (
@@ -1481,31 +1512,16 @@ export const App = () => {
                     spacing="1u"
                   >
                     {iconsResult.map((icon, index) => (
-                       <Rows key={index} align="center" spacing="1u">
-                        <div style={
-                          {
-                            width: '100%',
-                            height: '100%',  // 图标占据容器的 70% 高度
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            // background: "var(--ui-kit-color-neutral-low)",
-                            borderRadius:12,
-                          }
-                          }>
-                          <ImageCard
-                            borderRadius="standard"
-                            alt={icon.name}
-                            ariaLabel="Select icon to be filled"
-                            onClick={() => {handleIconClickInList(icon)}}
-                            selected={selectedIcon === icon.id} // 根据 selectedIcon 状态动态设置
-                            selectable
-                            thumbnailUrl={icon.url} 
-                            thumbnailAspectRatio={1}
-                          />
-                        </div>
-
-                      </Rows>
+                      <ImageCard
+                        borderRadius="standard"
+                        alt={icon.name}
+                        ariaLabel="Select icon to be filled"
+                        onClick={() => {handleIconClickInList(icon)}}
+                        selected={selectedIcon === icon.id} // 根据 selectedIcon 状态动态设置
+                        selectable
+                        thumbnailUrl={icon.url} 
+                        // thumbnailAspectRatio={1}
+                      />
                     ))}
                   </Grid>
                 ) : searchKeyword !== '' ? (
