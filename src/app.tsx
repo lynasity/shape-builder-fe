@@ -193,10 +193,10 @@ export const App = () => {
   const proAnnualID = 524260;
   const [canAcceptPayments, setCanAcceptPayments] = React.useState<boolean>(true);
 
-  React.useEffect(() => {
-    const platformInfo = getPlatformInfo();
-    setCanAcceptPayments(platformInfo.canAcceptPayments);
-  }, []); // 空依赖数组表示只在组件挂载时执行一次
+  // React.useEffect(() => {
+  //   const platformInfo = getPlatformInfo();
+  //   setCanAcceptPayments(platformInfo.canAcceptPayments);
+  // }, []); // 空依赖数组表示只在组件挂载时执行一次
 
   const addSegment = () => {
     const newSegment: segment = {
@@ -738,17 +738,19 @@ export const App = () => {
   return (
     <div className={styles.scrollContainer}>
       {!canAcceptPayments && tipStatus &&(
+        <Box paddingBottom="2u">
           <Alert
           title="Payments aren’t available on this device. "
           tone="warn"
           onDismiss={() => {setTipStatus(false)}}
-      >
+          >
           To upgrade, open this app in a web browser.
-      </Alert>
+          </Alert>
+        </Box>
       )}
        {((user?.status=='on-trial'||user?.status=='expired') && tipStatus && isLogined && user?.variant_id !== proMonthID && user?.variant_id !== proAnnualID && (credits ?? 0) <= 0) && activeTab=='shapefill' && (
        <Alert
-          title="You don’t have enough PercentFill credits."
+          title="You don’t have enough ImageChart Maker credits."
           tone="critical"
           onDismiss={() => {setTipStatus(false)}}
        >
@@ -757,7 +759,7 @@ export const App = () => {
             href={`${proMonthLink}?checkout[custom][user_id]=${user?.userid}`}
             id="id"
             requestOpenExternalUrl={() => directToLs(`${proMonthLink}`)}
-            title="PercentFill Pro Plan"
+            title="ImageChart Maker Pro Plan"
           >
             upgrade to Pro
           </Link>
@@ -765,7 +767,7 @@ export const App = () => {
     )}
     {(user?.status==='active' &&tipStatus && isLogined && activeTab=='imagefill' && user?.variant_id === proMonthID && (credits ?? 0) <= 0) && (
        <Alert
-          title="You don’t have enough PercentFill credits."
+          title="You don’t have enough ImageChart Maker credits."
           tone="critical"
           onDismiss={() => {setTipStatus(false)}}
        >
@@ -774,7 +776,7 @@ export const App = () => {
             href={`${proAnnualLink}?checkout[custom][user_id]=${user?.userid}`}
             id="id"
             requestOpenExternalUrl={() => directToLs(`${proAnnualLink}`)}
-            title="PercentFill Pro Plan annual membership."
+            title="ImageChart Maker Pro Plan annual membership."
           >
             upgrade to Pro Annual
           </Link>
@@ -1032,7 +1034,7 @@ export const App = () => {
                         <>
                         <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                           <Text size="small" variant="bold">
-                            Use 1 of {credits} PercentFill credits. Renews monthly.{' '}
+                            Use 1 of {credits} ImageChart Maker credits. Renews monthly.{' '}
                           </Text>
                           <Text size="small" variant="regular" tone="tertiary">
                              Get unlimited usage.{' '}
@@ -1041,7 +1043,7 @@ export const App = () => {
                                 href={`${proMonthLink}?checkout[custom][user_id]=${user.userid}`}
                                 id="id"
                                 requestOpenExternalUrl={() => directToLs((`${proMonthLink}`))}
-                                title="PercentFill Pro Plan"
+                                title="ImageChart Maker Pro Plan"
                               >
                                 Upgrade
                                </Link>
@@ -1055,7 +1057,7 @@ export const App = () => {
                         <>
                         <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                           <Text size="small" variant="bold">
-                            You are using PercentFill Pro Monthly.{''}
+                            You are using ImageChart Maker Pro Monthly.{''}
                           </Text>
                           <Text size="small" variant="regular" tone="tertiary">
                             { user?.userid && (
@@ -1095,9 +1097,9 @@ export const App = () => {
                       href={`${proMonthLink}?checkout[custom][user_id]=${user.userid}`}
                       id="id"
                       requestOpenExternalUrl={() => directToLs(`${proMonthLink}`)}
-                      title="PercentiFill Pro Plan"
+                      title="ImageChart Maker Pro Plan"
                       >
-                        upgrade to PercentFill Pro
+                        upgrade to ImageChart Maker Pro
                       </Link>
                     </Alert>
                   )}
@@ -1106,8 +1108,8 @@ export const App = () => {
                     mimeType="video/mp4"
                     onClick={() => {}}
                     onDragStart={() => {}}
-                    thumbnailUrl="https://percentfill.com/imagefillcover.png"
-                    videoPreviewUrl="https://percentfill.com/imagefill.mp4"
+                    thumbnailUrl="https://percentfill.com/imagechart-maker-cover.jpg"
+                    videoPreviewUrl="https://percentfill.com/imagechart-maker.mp4"
                   />
                     {/* <Text>Fill images by percentage with PercentFill. Upgrade to the Pro plan to unlock</Text> */}
                     <Button 
@@ -1424,7 +1426,7 @@ export const App = () => {
                                   <>
                                   <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                                     <Text size="small"  variant="bold">
-                                      Use 1 of {credits} PercentFill credits. Renews monthly.{''}
+                                      Use 1 of {credits} ImageChart Maker credits. Renews monthly.{''}
                                     </Text>
                                     <Text>
                                     Get unlimited usage.{' '}
@@ -1447,7 +1449,7 @@ export const App = () => {
                                   <>
                                   <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                                     <Text size="small" variant="bold">
-                                      You are using PercentFill Pro Annual.{' '}
+                                      You are using ImageChart Maker Pro Annual.{' '}
                                     </Text>
                                     <Text size="small" variant="regular" tone="tertiary">
                                       {user?.userid && (
