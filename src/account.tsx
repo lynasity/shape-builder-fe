@@ -6,7 +6,7 @@ type user = {
   status?:string,
   shape_fill_credits?:number,
   image_fill_credits?:number,
-  expiredTime?:string
+  ends_at?:string
 }
 
 // 获取服务端解析 jwt 后的数据
