@@ -1198,7 +1198,7 @@ export const App = () => {
       )}
        {((user?.status=='on-trial'||user?.status=='expired') && tipStatus && isLogined && user?.variant_id !== proMonthID && user?.variant_id !== proAnnualID && (credits ?? 0) <= 0) && activeTab=='shapefill' && (
        <Alert
-          title="You don't have enough ImageChart Maker credits."
+          title="You don't have enough Pictogram Maker credits."
           tone="critical"
           onDismiss={() => {setTipStatus(false)}}
        >
@@ -1218,15 +1218,15 @@ export const App = () => {
                 console.error('Error in upgrade click:', error);
               });
             }}
-            title="ImageChart Maker Pro Plan"
+            title="Pictogram Maker Pro Plan"
           >
             upgrade to Pro
           </Link>
        </Alert>
     )}
-    {(user?.status==='active' &&tipStatus && isLogined && activeTab=='imagefill' && user?.variant_id === proMonthID && (credits ?? 0) <= 0) && (
+    {/* {(user?.status==='active' &&tipStatus && isLogined && activeTab=='imagefill' && user?.variant_id === proMonthID && (credits ?? 0) <= 0) && (
        <Alert
-          title="You don't have enough ImageChart Maker credits."
+          title="You don't have enough Pictogram Maker credits."
           tone="critical"
           onDismiss={() => {setTipStatus(false)}}
        >
@@ -1246,12 +1246,12 @@ export const App = () => {
                 console.error('Error in upgrade click:', error);
               });
             }}
-            title="ImageChart Maker Pro Plan annual membership."
+            title="Pictogram Maker Pro Plan annual membership."
           >
             upgrade to Pro Annual
           </Link>
        </Alert>
-    )}
+    )} */}
     {currentPage==='main'&&(
       <Tabs 
         activeId={activeTab} 
@@ -1274,12 +1274,13 @@ export const App = () => {
           <TabPanels>
             <TabPanel id="shapefill">
               {sysError?.status && sysError.type==='svgFillError' && (
-                <Box>
+                <Box paddingBottom="1u">
                   <Alert
                     tone="critical"
                     onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
                   >
-                    {sysError.errMsg}
+                    Sorry,we had trouble creating your pictogram.You can try again another file or contact support.
+                     {/* {sysError.errMsg} */}
                   </Alert>
                 </Box>
               )}
@@ -1605,14 +1606,14 @@ export const App = () => {
                               onClick={() => {
                                 handleTabChange('imagefill');  // 使用已有的 handleTabChange 函数
                               }}
-                              thumbnailUrl="https://percentfill.com/imageChartMaker/more-style.png"
+                              thumbnailUrl="https://percentfill.com/imageChartMaker/ImageChart%20Maker%20UI-morestyle-2.png"
                               selectable
                               thumbnailHeight={90}
                               // bottomEnd={<LockClosedIcon />}
                             />
                             <Box>
                               <Text size="xsmall">
-                              Custom Style
+                              More Style
                               </Text>
                               {/* <Text
                                   size="small"
@@ -2000,7 +2001,7 @@ export const App = () => {
                           onClick={startSvgFill}
                           stretch
                           loading={isGenerating ? true : undefined} // 条渲染 loading 属性
-                          disabled={isGenerating || (user?.variant_id !== proMonthID && user?.variant_id !== proAnnualID && (credits ?? 0) <= 0)}
+                          disabled={isGenerating || ((user?.status === 'on-trial' || user?.status === 'expired') && (credits ?? 0) <= 0)}
                           >
                           Generate
                         </Button>
@@ -2009,7 +2010,7 @@ export const App = () => {
                         <>
                         <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                           <Text size="small" variant="bold">
-                            Use 1 of {credits} ImageChart Maker credits. Renews monthly.{' '}
+                            Use 1 of {credits} Pictogram Maker credits. Renews monthly.{' '}
                           </Text>
                           <Text size="small" variant="regular" tone="tertiary">
                              Get unlimited usage.{' '}
@@ -2029,7 +2030,7 @@ export const App = () => {
                                     console.error('Error in upgrade click:', error);
                                   });
                               }}
-                                title="ImageChart Maker Pro Plan"
+                                title="Pictogram Maker Pro Plan"
                               >
                                 Upgrade
                                </Link>
@@ -2043,7 +2044,7 @@ export const App = () => {
                         <>
                         <Box paddingY="0" alignItems="center" display="flex" flexDirection="column">
                           <Text size="small" variant="bold">
-                            You are using ImageChart Maker Pro Monthly.{''}
+                            You are using Pictogram Maker Pro Monthly.{''}
                           </Text>
                           <Text size="small" variant="regular" tone="tertiary">
                             { user?.userid && (
@@ -2105,9 +2106,9 @@ export const App = () => {
                           console.error('Error in upgrade click:', error);
                         });
                       }}
-                      title="ImageChart Maker Pro Plan"
+                      title="Pictogram Maker Pro Plan"
                       >
-                        upgrade to ImageChart Maker Pro
+                        upgrade to Pictogram Maker Pro
                       </Link>
                     </Alert>
                   )}
