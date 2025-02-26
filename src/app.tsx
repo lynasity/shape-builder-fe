@@ -1279,7 +1279,7 @@ export const App = () => {
                     tone="critical"
                     onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
                   >
-                    Sorry,we had trouble creating your pictogram.You can try again another file or contact support.
+                    Sorry, we had trouble creating your pictogram. You can try again another file or contact support.
                      {/* {sysError.errMsg} */}
                   </Alert>
                 </Box>
@@ -1372,7 +1372,7 @@ export const App = () => {
                         setSysError({
                           status: true,
                           type: "fileSize",
-                          errMsg: 'File size exceeds 4MB, cannot upload'
+                          errMsg: 'File must be 4MB or smaller to continue.'
                         });
                         return;
                       }
@@ -1389,10 +1389,22 @@ export const App = () => {
                       setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
                     }}
                   />
+                  {/* 添加错误提示的展示逻辑 */}
+                  {sysError?.status && sysError.type === "fileSize" && (
+                    <Box paddingY="1u">
+                      <Alert
+                        title="Unable to upload file."
+                        tone="critical"
+                        onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
+                      >
+                        {sysError.errMsg}
+                      </Alert>
+                    </Box>
+                  )}
                   {!uploadedSvg && !sysError?.status && (
-                      <Box paddingY="1u">
-                        <Text size="small" variant="regular" tone="tertiary">Maximum file size: 4MB. Accepted file formats: SVG.</Text>
-                      </Box>
+                    <Box paddingY="1u">
+                      <Text size="small" variant="regular" tone="tertiary">Maximum file size: 4MB. Accepted file formats: SVG.</Text>
+                    </Box>
                   )}
                   {svgName && !(sysError?.status && sysError?.type === "fileSize") &&(
                     <>
@@ -1462,7 +1474,7 @@ export const App = () => {
                           />
                           <Box>
                             <Text size="xsmall">
-                              Color Fraction
+                              Color fraction
                             </Text>
                              {/* <Text
                                   size="small"
@@ -1487,7 +1499,7 @@ export const App = () => {
                           />
                           <Box>
                             <Text size="xsmall">
-                              Opacity Fraction
+                              Opacity fraction
                             </Text>
                             {/* <Text
                                   size="small"
@@ -1512,7 +1524,7 @@ export const App = () => {
                             />
                             <Box>
                               <Text size="xsmall">
-                                Verticle Stacked
+                                Vertical stacked
                               </Text>
                               {/* <Text
                                   size="small"
@@ -1537,7 +1549,7 @@ export const App = () => {
                             />
                             <Box>
                               <Text size="xsmall">
-                                Horizantal Stacked
+                                Horizontal stacked
                               </Text>
                               {/* <Text
                                   size="small"
@@ -1562,7 +1574,7 @@ export const App = () => {
                           />
                           <Box>
                             <Text size="xsmall">
-                            Color Dist
+                            Color dist
                             </Text>
                              {/* <Text
                                   size="small"
@@ -1587,7 +1599,7 @@ export const App = () => {
                           />
                           <Box>
                             <Text size="xsmall">
-                            Opacity Dist
+                            Opacity dist
                             </Text>
                              {/* <Text
                                   size="small"
@@ -2177,6 +2189,7 @@ export const App = () => {
                           <>
                             {sysError?.status && sysError.type === "fileSize" && (
                               <Alert
+                                title="Unable to upload file."
                                 onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
                                 tone="warn"
                               >
@@ -2201,7 +2214,7 @@ export const App = () => {
                                   setSysError({
                                     status: true,
                                     type: "fileSize",
-                                    errMsg: 'File size exceeds 4MB, cannot upload'
+                                    errMsg: 'File must be 4MB or smaller to continue.'
                                   });
                                   return;
                                 }
@@ -2310,7 +2323,7 @@ export const App = () => {
                               />
                               <Box>
                                 <Text size="xsmall">
-                                Vertical Stacked
+                                Vertical stacked
                                 </Text>
                                 {/* <Text
                                   size="small"
@@ -2336,7 +2349,7 @@ export const App = () => {
                               />
                               <Box>
                                 <Text size="xsmall">
-                                Horizontal Stacked
+                                Horizontal stacked
                                 </Text>
                                 {/* <Text
                                   size="small"
@@ -2361,7 +2374,7 @@ export const App = () => {
                               />
                               <Box>
                                 <Text size="xsmall">
-                                Color Fraction
+                                Color fraction
                                 </Text>
                                 {/* <Text
                                   size="small"
@@ -2386,7 +2399,7 @@ export const App = () => {
                               />
                               <Box>
                                 <Text size="xsmall">
-                                Color Fill
+                                Color fill
                                 </Text>
                                 {/* <Text
                                   size="small"
@@ -2411,7 +2424,7 @@ export const App = () => {
                               />
                               <Box>
                                 <Text size="xsmall">
-                                  Color Dist
+                                  Color dist
                                 </Text>
                                 {/* <Text
                                       size="small"
@@ -2436,7 +2449,7 @@ export const App = () => {
                               />
                               <Box>
                                 <Text size="xsmall">
-                                Opacity Fraction
+                                Opacity fraction
                                 </Text>
                                 {/* <Text
                                   size="small"
@@ -2462,7 +2475,7 @@ export const App = () => {
                               />
                               <Box>
                                 <Text size="xsmall">
-                                  Opacity Dist
+                                  Opacity dist
                                 </Text>
                                 {/* <Text
                                       size="small"

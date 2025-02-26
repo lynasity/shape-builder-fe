@@ -9,7 +9,7 @@ type coreSvg = {
 const createSvgFillV2 = async (
   svgContent: string,
   fillPercentage: number,
-  transparency:number
+  transparency: number
 ): Promise<coreSvg> => {
   console.log('svgcontent=' + svgContent);
   const tempDiv = document.createElement('div');
@@ -28,68 +28,70 @@ const createSvgFillV2 = async (
     throw new Error('No path elements found');
   }
 
+  const width = parseFloat(svgElement.getAttribute('width') || '0');
+  const height = parseFloat(svgElement.getAttribute('height') || '0');
+
+  let viewBoxWidth, viewBoxHeight;
   const viewBox = svgElement.getAttribute('viewBox')?.split(' ').map(Number);
-  if (!viewBox || viewBox.length < 4) {
-    throw new Error('Invalid viewBox attribute');
+  if (viewBox && viewBox.length === 4) {
+    [, , viewBoxWidth, viewBoxHeight] = viewBox;
+  } else {
+    viewBoxWidth = Number.isFinite(width) ? width : 100;
+    viewBoxHeight = Number.isFinite(height) ? height : 100;
+    svgElement.setAttribute('viewBox', `0 0 ${viewBoxWidth} ${viewBoxHeight}`);
   }
 
-  const [, , viewBoxWidth, viewBoxHeight] = viewBox;
   console.log(`viewBoxWidth: ${viewBoxWidth}, viewBoxHeight: ${viewBoxHeight}`);
 
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
+  // 创建一个临时的 Image 对象来渲染 SVG
+  const encodedSvg = encodeURIComponent(svgContent);
+  const imageSrc = `data:image/svg+xml;charset=utf-8,${encodedSvg}`;
+  const image = new Image();
+  image.src = imageSrc;
 
-  if (!ctx) {
+  // 等待图片加载
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = reject;
+  });
+
+  // 创建两个 canvas：一个用于原始图像，一个用于最终结果
+  const originalCanvas = document.createElement('canvas');
+  const originalCtx = originalCanvas.getContext('2d');
+  const finalCanvas = document.createElement('canvas');
+  const finalCtx = finalCanvas.getContext('2d');
+
+  if (!originalCtx || !finalCtx) {
     throw new Error('Failed to get canvas context');
   }
 
-  canvas.width = viewBoxWidth;
-  canvas.height = viewBoxHeight;
+  originalCanvas.width = viewBoxWidth;
+  originalCanvas.height = viewBoxHeight;
+  finalCanvas.width = viewBoxWidth;
+  finalCanvas.height = viewBoxHeight;
 
-  const fillHeight = canvas.height * (fillPercentage / 100);
-  const fillStartY = canvas.height - fillHeight;
+  // 先在原始 canvas 上绘制完整的 SVG
+  originalCtx.drawImage(image, 0, 0, viewBoxWidth, viewBoxHeight);
 
-  // 先绘制原始图像
-  paths.forEach(path => {
-    const path2D = new Path2D(path.getAttribute('d') || '');
-    const pathBBox = path.getBBox();
-    const pathTop = pathBBox.y;
+  // 计算填充高度
+  const fillHeight = finalCanvas.height * (fillPercentage / 100);
+  const fillStartY = finalCanvas.height - fillHeight;
 
-    ctx.save(); // 保存当前绘图状态
+  // 绘制填充部分（完全不透明）
+  finalCtx.drawImage(originalCanvas, 
+    0, fillStartY, viewBoxWidth, fillHeight,  // source
+    0, fillStartY, viewBoxWidth, fillHeight   // destination
+  );
 
-    if (pathTop >= fillStartY) {
-      // 整个元素在保留范围内，保持原色
-      ctx.fillStyle = path.getAttribute('fill') || 'black';
-      ctx.fill(path2D);
-    } else if (pathBBox.y + pathBBox.height > fillStartY) {
-      // 元素部分在保留范围内，部分透明
-      ctx.beginPath();
-      ctx.rect(0, fillStartY, canvas.width, fillHeight);
-      ctx.clip();
-      ctx.fillStyle = path.getAttribute('fill') || 'black';
-      ctx.fill(path2D);
-
-      ctx.restore(); // 恢复到未剪裁状态
-      ctx.save(); // 再次保存状态以便下次恢复
-
-      ctx.globalAlpha = (transparency/100);
-      ctx.beginPath();
-      ctx.rect(0, 0, canvas.width, fillStartY);
-      ctx.clip();
-      ctx.fillStyle = path.getAttribute('fill') || 'black';
-      ctx.fill(path2D);
-    } else {
-      // 整个元素在透明范围内，降低透明度
-      ctx.globalAlpha = (transparency/100); // 设置透明度为原来的一半
-      ctx.fillStyle = path.getAttribute('fill') || 'black';
-      ctx.fill(path2D);
-    }
-
-    ctx.restore(); // 恢复到未剪裁状态
-  });
+  // 绘制透明部分
+  finalCtx.globalAlpha = transparency / 100;
+  finalCtx.drawImage(originalCanvas,
+    0, 0, viewBoxWidth, fillStartY,          // source
+    0, 0, viewBoxWidth, fillStartY           // destination
+  );
 
   const svgResult: coreSvg = {
-    url: canvas.toDataURL('image/png'),
+    url: finalCanvas.toDataURL('image/png'),
     viewBoxHeigh: viewBoxHeight,
     viewBoxWidth: viewBoxWidth,
     iconHeight: viewBoxHeight,
@@ -97,7 +99,6 @@ const createSvgFillV2 = async (
   };
 
   document.body.removeChild(tempDiv);
-
   return svgResult;
 };
 

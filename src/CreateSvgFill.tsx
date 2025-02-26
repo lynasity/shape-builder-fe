@@ -16,95 +16,81 @@ const createSvgFill = async (
   fillPercentage: number,
   backgroundColor: string // 新增背景色参数
 ): Promise<coreSvg> => {
-  // Load SVG from URL
-  // console.log("开始获取 svg="+svgUrl)
-  // const token = getToken()
-  // const params = {
-  //   id: iconId.toString()
-  // };
-  // const queryString = new URLSearchParams(params).toString();
-  // const response = await fetch(`https://percentfill-backend--partfill.us-central1.hosted.app/api/icon?${queryString}`, {
-  //   method: "GET",
-  //   headers: {
-  //     "Content-Type": "application/json",
-  //     "Authorization": `Bearer ${token}`,
-  //   },
-  //   mode: "cors", // 启用跨域请求
-  // });
-  // const svgText = await response.text(); 
-  // Create a temporary div to hold the SVG for size measurement
-  console.log('svgcontent='+svgContent)
+  // Create temporary div
   const tempDiv = document.createElement('div');
   tempDiv.style.position = 'absolute';
   tempDiv.style.visibility = 'hidden';
   tempDiv.innerHTML = svgContent;
   document.body.appendChild(tempDiv);
 
-  // Extract the SVG element and its dimensions using getBBox
+  // Get SVG element
   const svgElement = tempDiv.querySelector('svg');
   if (!svgElement) {
+    document.body.removeChild(tempDiv);
     throw new Error('SVG element not found');
   }
 
-  // Create an SVG path element to get its bounding box
+  // Get path element
   const pathElement = svgElement.querySelector('path');
   if (!pathElement) {
+    document.body.removeChild(tempDiv);
     throw new Error('Path element not found');
   }
 
-  // Get the bounding box of the path element
+  // Get SVG dimensions
+  const svgOriginalWidth = parseFloat(svgElement.getAttribute('width') || '0');
+  const svgOriginalHeight = parseFloat(svgElement.getAttribute('height') || '0');
+
+  // Get or create viewBox
+  let viewBoxWidth, viewBoxHeight;
+  const viewBox = svgElement.getAttribute('viewBox')?.split(' ').map(Number);
+  if (viewBox && viewBox.length === 4) {
+    [, , viewBoxWidth, viewBoxHeight] = viewBox;
+  } else {
+    viewBoxWidth = Number.isFinite(svgOriginalWidth) ? svgOriginalWidth : 100;
+    viewBoxHeight = Number.isFinite(svgOriginalHeight) ? svgOriginalHeight : 100;
+    svgElement.setAttribute('viewBox', `0 0 ${viewBoxWidth} ${viewBoxHeight}`);
+  }
+
+  // Get path bounding box
   const bbox = pathElement.getBBox();
   const width = bbox.width;
   const height = bbox.height;
   const x = bbox.x;
   const y = bbox.y;
 
-  console.log(`BBox - x: ${x}, y: ${y}, width: ${width}, height: ${height}`);
-
+  // Now we can remove the temporary div
   document.body.removeChild(tempDiv);
 
-  // Encode the SVG text properly
+  // Create image from SVG
   const encodedSvg = encodeURIComponent(svgContent);
   const imageSrc = `data:image/svg+xml;charset=utf-8,${encodedSvg}`;
-  const parser = new DOMParser();
-  const svgDoc = parser.parseFromString(svgContent, 'image/svg+xml');
-  const viewBox = svgElement.getAttribute('viewBox')?.split(' ').map(Number);
-  if (!viewBox || viewBox.length < 4) {
-        throw new Error('Invalid viewBox attribute');
-  }
-
-    // Extract width and height from viewBox
-  const [ , , viewBoxWidth, viewBoxHeight ] = viewBox;
-  console.log(`viewBoxWidth: ${viewBoxWidth}, viewBoxHeight: ${viewBoxHeight}`);
-
-  // Create an image from the SVG
   const image = new Image();
   image.src = imageSrc;
 
-  // Create a canvas to draw the SVG
+  // Create initial canvas
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
-
   if (!ctx) {
     throw new Error('Failed to get canvas context');
   }
 
+  // Set canvas size to viewBox dimensions
   canvas.width = viewBoxWidth;
   canvas.height = viewBoxHeight;
 
-  // Draw the SVG on the canvas
+  // Draw SVG on canvas
   await new Promise<void>((resolve, reject) => {
     image.onload = () => {
-      ctx.drawImage(image, 0, 0, viewBoxWidth,viewBoxHeight); // Offset by x and y
+      ctx.drawImage(image, 0, 0, viewBoxWidth, viewBoxHeight);
       resolve();
     };
-    image.onerror = (error) => reject(error);
+    image.onerror = reject;
   });
 
-  // Create a new canvas for the final image with fill
+  // Create final canvas
   const finalCanvas = document.createElement('canvas');
   const finalCtx = finalCanvas.getContext('2d');
-
   if (!finalCtx) {
     throw new Error('Failed to get final canvas context');
   }
@@ -112,32 +98,29 @@ const createSvgFill = async (
   finalCanvas.width = viewBoxWidth;
   finalCanvas.height = viewBoxHeight;
 
-  // Draw the SVG image on the final canvas for masking
+  // Draw background
   finalCtx.drawImage(canvas, 0, 0);
-
-  // Create a grayscale version of the SVG
   finalCtx.globalCompositeOperation = 'source-in';
-  finalCtx.fillStyle = backgroundColor; // 使用传入的背景色替代固定的灰色
+  finalCtx.fillStyle = backgroundColor;
   finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
 
-  // Create a gradient for the fill starting from the bottom
-  const gradient = finalCtx.createLinearGradient(x, y+height, x, y);
+  // Create and apply gradient
+  const gradient = finalCtx.createLinearGradient(0, finalCanvas.height, 0, 0);
   gradient.addColorStop(0, fillColor);
   gradient.addColorStop(fillPercentage / 100, fillColor);
   gradient.addColorStop(fillPercentage / 100, 'rgba(255, 255, 255, 0)');
   gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
-  // Apply the gradient on top of the grayscale image
   finalCtx.globalCompositeOperation = 'source-atop';
   finalCtx.fillStyle = gradient;
-  finalCtx.fillRect(x, y, width, height);
+  finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
 
   const svgResult:coreSvg = {
-    url:finalCanvas.toDataURL('image/png'),
-    viewBoxHeigh:viewBoxHeight,
-    viewBoxWidth:viewBoxWidth,
-    iconHeight:height,
-    iconWidth:width
+    url: finalCanvas.toDataURL('image/png'),
+    viewBoxHeigh: viewBoxHeight,
+    viewBoxWidth: viewBoxWidth,
+    iconHeight: height,
+    iconWidth: width
   }
   // Return the final image data URL
   return svgResult;
