@@ -12,7 +12,6 @@ type segment = {
   name: string;
   color: string;
   value: number | undefined;
-  opacity: number;
 };
 
 function logTime(start: number, label: string) {
@@ -21,7 +20,13 @@ function logTime(start: number, label: string) {
   return end;
 }
 
-async function createPercentFill(background: string, segments: segment[], fillPattern: string, removeBackground: boolean): Promise<coreImg> {
+async function createPercentFill(
+  background: string, 
+  segments: segment[], 
+  fillPattern: string, 
+  removeBackground: boolean,
+  transparency: number
+): Promise<coreImg> {
   let startTime = performance.now();
   let lastTime = startTime;
 
@@ -79,9 +84,9 @@ async function createPercentFill(background: string, segments: segment[], fillPa
     ctx.globalCompositeOperation = 'source-atop';
 
     if (fillPattern === 'vertical') {
-      fillVertical(ctx, segments, objectHeight, objectTop, canvas.width);
+      fillVertical(ctx, segments, objectHeight, objectTop, canvas.width, transparency);
     } else if (fillPattern === 'horizontal') {
-      fillHorizontal(ctx, segments, objectWidth, objectLeft, canvas.height);
+      fillHorizontal(ctx, segments, objectWidth, objectLeft, canvas.height, transparency);
     }
     lastTime = logTime(lastTime, "填充图像");
 
@@ -142,26 +147,40 @@ function getObjectDimensions(imageData: ImageData): { width: number, height: num
   };
 }
 
-function fillVertical(ctx: CanvasRenderingContext2D, segments: segment[], objectHeight: number, objectTop: number, canvasWidth: number) {
+function fillVertical(
+  ctx: CanvasRenderingContext2D, 
+  segments: segment[], 
+  objectHeight: number, 
+  objectTop: number, 
+  canvasWidth: number,
+  transparency: number
+) {
   const startTime = performance.now();
   let currentTopOffset = objectTop;
   segments.forEach(segment => {
     const value = segment.value ?? 0;
     const segmentHeight = objectHeight * (value / 100);
-    ctx.fillStyle = `${segment.color}${Math.floor((segment.opacity / 100) * 255).toString(16).padStart(2, '0')}`;
+    ctx.fillStyle = `${segment.color}${Math.floor((transparency / 100) * 255).toString(16).padStart(2, '0')}`;
     ctx.fillRect(0, currentTopOffset, canvasWidth, segmentHeight);
     currentTopOffset += segmentHeight;
   });
   logTime(startTime, "垂直填充");
 }
 
-function fillHorizontal(ctx: CanvasRenderingContext2D, segments: segment[], objectWidth: number, objectLeft: number, canvasHeight: number) {
+function fillHorizontal(
+  ctx: CanvasRenderingContext2D, 
+  segments: segment[], 
+  objectWidth: number, 
+  objectLeft: number, 
+  canvasHeight: number,
+  transparency: number
+) {
   const startTime = performance.now();
   let currentLeftOffset = objectLeft;
   segments.forEach(segment => {
     const value = segment.value ?? 0;
     const segmentWidth = objectWidth * (value / 100);
-    ctx.fillStyle = `${segment.color}${Math.floor((segment.opacity / 100) * 255).toString(16).padStart(2, '0')}`;
+    ctx.fillStyle = `${segment.color}${Math.floor((transparency / 100) * 255).toString(16).padStart(2, '0')}`;
     ctx.fillRect(currentLeftOffset, 0, segmentWidth, canvasHeight);
     currentLeftOffset += segmentWidth;
   });
