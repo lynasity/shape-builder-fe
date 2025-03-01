@@ -10,19 +10,32 @@ export interface ColorStop {
 
 interface GradientPickerProps {
   onChange: (colors: ColorStop[]) => void;
+  colors?: ColorStop[];
 }
 
-export const GradientPicker: React.FC<GradientPickerProps> = ({ onChange }) => {
-  const [colorStops, setColorStops] = React.useState<ColorStop[]>([
-    { color: "#ff0099", position: 0, id: "start" },
-    { color: "#6600ff", position: 100, id: "end" }
-  ]);
+export const GradientPicker: React.FC<GradientPickerProps> = ({ onChange, colors }) => {
+  const [colorStops, setColorStops] = React.useState<ColorStop[]>(
+    colors || [
+      { color: "#ff0099", position: 0, id: "start" },
+      { color: "#6600ff", position: 100, id: "end" }
+    ]
+  );
   const containerRef = React.useRef<HTMLDivElement>(null);
   const [draggingStop, setDraggingStop] = React.useState<string | null>(null);
   const [selectedStop, setSelectedStop] = React.useState<string | null>(null);
   const [pressTimer, setPressTimer] = React.useState<number | null>(null);
   const PRESS_DELAY = 50; // 缩短到 100ms，让交互更自然
   const [closeColorSelector, setCloseColorSelector] = React.useState<(() => void) | null>(null);
+
+  // 修改这个useEffect，添加一个初始化标记
+  const isInitialRender = React.useRef(true);
+  React.useEffect(() => {
+    // 只在组件初始化时使用colors，忽略后续更新
+    if (isInitialRender.current && colors) {
+      setColorStops(colors);
+      isInitialRender.current = false;
+    }
+  }, [colors]);
 
   const handleBarClick = (e: React.MouseEvent) => {
     if (draggingStop) return;

@@ -24,11 +24,17 @@ export const GradientDirectionControl: React.FC<GradientDirectionControlProps> =
     
     const dx = end.x - start.x;
     const dy = end.y - start.y;
-    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    // 计算数学坐标系下的角度
+    const mathAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+    
+    // 转换为CSS角度系统 (mathAngle是从右开始的，CSS是从上开始的，相差90度)
+    const cssAngle = (mathAngle + 90) % 360;
     
     if (newStart) setStartPoint(newStart);
     if (newEnd) setEndPoint(newEnd);
-    onChange((angle + 360) % 360);
+    
+    // 传递CSS兼容的角度
+    onChange(cssAngle);
   };
 
   // 监听 colorStops 变化，实时更新边缘颜色

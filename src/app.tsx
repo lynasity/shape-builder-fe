@@ -28,15 +28,11 @@ import {
   SegmentedControl,
 } from "@canva/app-ui-kit";
 import { openColorSelector,CloseColorSelectorFn } from "@canva/asset";
-// import { addNativeElement } from "@canva/design";
 import * as React from "react";
 //@ts-ignore
 import styles from "styles/components.css";
 import { useAddElement } from "utils/use_add_element";
-
-import createPercentFill from "./CreatePercentFill";
-import createPercentFillV2 from "./CreatePercentFillV2";
-import createPercentFillV3 from "./CreatePercentFillV3";
+import { upload } from "@canva/asset";
 
 import {auth} from "@canva/user"
 import {login} from "./account";
@@ -92,7 +88,9 @@ type sysError = {
   errMsg: string;
 }
 
-const API_BASE_URL = 'http://localhost:3000';
+// const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://image-colorizer--imagecolorizer-1096c.us-central1.hosted.app';
+
 
 // 添加一个生成噪声纹理的辅助函数
 const generateNoiseTexture = (width: number, height: number, noiseLevel: number): HTMLCanvasElement => {
@@ -197,14 +195,12 @@ export const App = () => {
   // 添加背景移除处理状态
   const [isRemovingBackground, setIsRemovingBackground] = React.useState(false);
 
-  const addSegment = () => {
-    const newSegment: segment = {
-      name: `Segment ${segments.length + 1}`,
-      color: "#000000", // 默认颜色，可以动态修改
-      value: 0 ,// 默认百分比值
-    };
-    setSegments([...segments, newSegment]);
-  };
+  const [isImageLocked, setIsImageLocked] = React.useState(false);
+  const [lockedImageUrl, setLockedImageUrl] = React.useState<string | null>(null);
+  const [lockedImageBase64, setLockedImageBase64] = React.useState<string | null>(null);
+
+  // 在state声明部分添加一个标志位，表示用户是否手动点击了抠图按钮
+  const [manualRemoveBackground, setManualRemoveBackground] = React.useState(false);
 
   const getUserInfo = React.useCallback(async () => {
     try {
@@ -230,13 +226,6 @@ export const App = () => {
   
   }, [getUserInfo]);
 
-
-  // 删除 segment 的函数
-  const removeSegment = (indexToRemove: number) => {
-    setSegments((prevSegments) =>
-      prevSegments.filter((_, index) => index !== indexToRemove)
-    );
-  };
  
   async function getSelectionImage(): Promise<string> {
     const draft = await currentSelection.read();
@@ -287,8 +276,20 @@ export const App = () => {
       });
       setImgSelectionUrl(url); // 更新 imgSelectionUrl 状态
       
+      // 如果图片尚未锁定，则锁定当前选择的图片
+      if (!isImageLocked) {
+        setLockedImageUrl(url);
+        setIsImageLocked(true);
+        
+        // 同时获取Base64数据用于背景移除等操作
+        const imageBase64 = await getSelectionImage();
+        if (imageBase64) {
+          setLockedImageBase64(imageBase64);
+        }
+      }
+      
       // 手动触发预览更新，确保在图片 URL 设置后执行
-      setTimeout(() => setPreviewReady(true), 50);
+      setTimeout(() => setPreviewReady(true));
     } catch (error) {
       console.log(error);
     }
@@ -310,7 +311,7 @@ export const App = () => {
   // 修改预览更新的useEffect，添加新的依赖项
   React.useEffect(() => {
     // 当任何一个与预览相关的参数变化时，更新预览
-    if (imgPreviewUrl || imgSelectionUrl) {
+    if ((imgPreviewUrl || imgSelectionUrl) && !previewReady) {
       setPreviewReady(true);
     }
   }, [
@@ -334,6 +335,12 @@ export const App = () => {
     setImgPreviewUrl(base64URL);
     setFile(base64URL);
     setFileName(fileName);
+    
+    // 锁定上传的图片
+    setIsImageLocked(true);
+    setLockedImageUrl(base64URL);
+    setLockedImageBase64(base64URL);
+    
     // 预览会通过上面的useEffect自动更新
   };
 
@@ -352,14 +359,21 @@ export const App = () => {
         return;
       }
       
-      if(currentSelection.count === 1){
-        if (removeBackground && removedBgImage) {
-          originImage = removedBgImage;
-        } else {
-          originImage = await getSelectionImage();
-          if (!originImage) {
-            throw new Error('Failed to get selected image');
-          }
+      // 优先使用已移除背景的图片（如果存在）
+      if (removeBackground && removedBgImage) {
+        console.log("Using background-removed image for processing");
+        originImage = removedBgImage;
+      }
+      // 然后检查是否有锁定的图片
+      else if (isImageLocked && lockedImageBase64) {
+        console.log("Using locked image for processing");
+        originImage = lockedImageBase64;
+      }
+      else if(currentSelection.count === 1){
+        console.log("Using selection image for processing");
+        originImage = await getSelectionImage();
+        if (!originImage) {
+          throw new Error('Failed to get selected image');
         }
       } else {
         if (!file) {
@@ -368,11 +382,8 @@ export const App = () => {
           return;
         }
         
-        if (removeBackground && removedBgImage) {
-          originImage = removedBgImage;
-        } else {
-          originImage = file as string;
-        }
+        console.log("Using uploaded file for processing");
+        originImage = file as string;
       }
       
       // 创建一个Canvas来合成图像与效果
@@ -508,7 +519,23 @@ export const App = () => {
         dataUrl: processedImageURL,
         altText: undefined
       });
-      
+      // // 2. 同时上传到Canva资源库 (新增功能)
+      // try {
+      //   const uploadResult = await upload({
+      //     type: "image",
+      //     mimeType: "image/png",
+      //     url: processedImageURL,
+      //     thumbnailUrl: processedImageURL,
+      //     aiDisclosure: "none"
+      //   });
+        
+      //   // 等待上传完成并记录成功信息
+      //   await uploadResult.whenUploaded();
+      //   console.log("Image successfully uploaded to Canva library:", uploadResult);
+      // } catch (uploadError) {
+      //   // 上传失败不影响主流程，只记录错误
+      //   console.error("Failed to upload image to library:", uploadError);
+      // }
     } catch (e: any) {
       console.error('Error in startFill:', e);
       setSysError({
@@ -521,30 +548,6 @@ export const App = () => {
     }
   };
 
-  // 定义生成错误提示信息的函
-  const setErrorMessage = (e: string) => {
-    setIsGenerating(false);
-    // 将函数传入的 e 错误信息，set 到变error中
-    setError(e);
-  };
-
-//定义清除错误提示信息的函数 
-  const clearErrorMessage = () => {
-    // 通过userState 返回的函数来更新错状态
-    setError(false);
-  };
-
-  const truncateText = (text: string, maxLength: number) => {
-    if (text.length <= maxLength) return text;
-    
-    const firstWord = text.split(' ')[0];
-    if (firstWord.length >= maxLength) {
-      return firstWord.slice(0, maxLength) + '...';
-    }
-    
-    return text.slice(0, maxLength).trim() + '...';
-  };
-
   // 在组件中添加图片ref
   const imageRef = React.useRef<HTMLImageElement>(null);
 
@@ -553,26 +556,37 @@ export const App = () => {
     try {
       // 设置特定的背景移除加载状态
       setIsRemovingBackground(true);
+      console.log("processRemoveBackground called with source:", imageSource ? "Has image source" : "No image source");
       
       let imageBase64: string;
       
       // 如果是通过选择方式获取的图片
       if (!imageSource && currentSelection.count === 1) {
+        console.log("Getting image from selection");
         imageBase64 = await getSelectionImage();
+        console.log("Selection image obtained:", imageBase64 ? "Image obtained successfully" : "Failed to get image");
         if (!imageBase64) {
           throw new Error('Failed to get selected image');
         }
       } else if (imageSource && typeof imageSource === 'string') {
         // 如果是通过上传方式获取的图片
+        console.log("Using provided image source");
         imageBase64 = imageSource;
       } else {
+        console.log("No valid image source available");
         throw new Error('No image available');
       }
+      
+      console.log("Image base64 string length:", imageBase64.length);
+      console.log("Image base64 starts with:", imageBase64.substring(0, 50));
       
       // 确保只传递base64部分而不是完整的data URL
       const base64Data = imageBase64.includes('base64,') 
         ? imageBase64.split('base64,')[1] 
         : imageBase64;
+      
+      console.log("Base64 data prepared, length:", base64Data.length);
+      console.log("Calling API for background removal");
       
       const token = await auth.getCanvaUserToken();
       const response = await fetch(`${API_BASE_URL}/api/cutout`, {
@@ -586,19 +600,39 @@ export const App = () => {
         })
       });
       
+      console.log("API response status:", response.status);
+      
       if (!response.ok) {
+        console.error("API error response:", response);
         throw new Error('Failed to remove background');
       }
       
       // Convert response to blob then to base64
       const blob = await response.blob();
+      console.log("Response blob size:", blob.size);
       const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64data = reader.result as string;
-        setRemovedBgImage(base64data);
-        setPreviewReady(true); // Update preview
-      };
-      reader.readAsDataURL(blob);
+      
+      // 使用Promise包装reader操作，确保完成后再更新状态
+      await new Promise((resolve, reject) => {
+        reader.onloadend = () => {
+          try {
+            console.log("FileReader completed");
+            const base64data = reader.result as string;
+            setRemovedBgImage(base64data);
+            setPreviewReady(true); // Update preview
+            resolve(base64data);
+          } catch (err) {
+            console.error("Error in FileReader onloadend:", err);
+            reject(err);
+          }
+        };
+        reader.onerror = (error) => {
+          console.error("FileReader error:", error);
+          reject(error);
+        };
+        reader.readAsDataURL(blob);
+      });
+      console.log("Background removal completed successfully");
     } catch (error) {
       console.error('Error removing background:', error);
       setSysError({
@@ -608,14 +642,20 @@ export const App = () => {
       });
       setRemoveBackground(false); // Reset switch if operation fails
     } finally {
+      // 确保无论成功或失败都更新状态
+      console.log("Background removal process finished, resetting loading state");
       setIsRemovingBackground(false);
     }
   };
   
-  // 更新 removeBackground 效果，处理不同来源的图片
+  // 修改背景移除的useEffect，让它只在用户手动点击按钮时触发抠图
   React.useEffect(() => {
-    if (removeBackground) {
-      if (file && typeof file === 'string') {
+    if (removeBackground && manualRemoveBackground) {
+      if (isImageLocked && lockedImageBase64) {
+        // 处理锁定的图片
+        processRemoveBackground(lockedImageBase64);
+      }
+      else if (file && typeof file === 'string') {
         // 处理上传的图片
         processRemoveBackground(file);
       } else if (currentSelection.count === 1) {
@@ -623,20 +663,31 @@ export const App = () => {
         processRemoveBackground(null);
       } else {
         setRemoveBackground(false); // 没有可用图片时重置开关
+        setManualRemoveBackground(false); // 重置手动标志
         setSysError({
           status: true,
           type: 'backgroundRemoval',
           errMsg: 'Please select or upload an image first'
         });
       }
-    } else {
+      // 抠图操作完成后重置手动标志
+      setManualRemoveBackground(false);
+    } else if (!removeBackground) {
       // 重置已移除背景的图像状态，确保使用原图
       setRemovedBgImage(null);
       // 确保预览能刷新显示
       setPreviewReady(false);
       setTimeout(() => setPreviewReady(true), 50);
     }
-  }, [removeBackground, file, currentSelection.count]);
+  }, [removeBackground, file, currentSelection.count, isImageLocked, lockedImageBase64, manualRemoveBackground]);
+
+  // 更新 removeBackground 效果，确保状态变化时预览正确更新
+  React.useEffect(() => {
+    // 确保预览更新以反映状态变化
+    if (!previewReady) {
+      setTimeout(() => setPreviewReady(true), 10);
+    }
+  }, [removeBackground, previewReady]);
 
   if (isOffline) {
     return (
@@ -663,7 +714,7 @@ export const App = () => {
       )}
       <Rows spacing="1.5u">
         <>
-        {currentSelection.count === 0 && (
+        {(!isImageLocked) && (
           <>
             {sysError?.status && sysError.type === "fileSize" && (
               <Alert
@@ -702,9 +753,22 @@ export const App = () => {
               <FileInputItem 
                 label={fileName}
                 onDeleteClick={() => {
-                  setFile(false); // 将 null 改为 false
+                  // 重置所有与图片相关的状态
+                  setFile(false);
                   setFileName('');
-                  setSysError({ status: false, type: "", errMsg: "" }); // 清除错误状态
+                  setImgPreviewUrl(null);
+                  
+                  // 清除背景移除状态
+                  setRemoveBackground(false);
+                  setRemovedBgImage(null);
+                  
+                  // 解除图片锁定
+                  setIsImageLocked(false);
+                  setLockedImageUrl(null);
+                  setLockedImageBase64(null);
+                  
+                  setSysError({ status: false, type: "", errMsg: "" });
+                  console.log("Image deleted, resetting states");
                 }}
               />
             )}
@@ -712,7 +776,7 @@ export const App = () => {
         )}
         </> 
          {/* 如果了多个图片 */}
-          {currentSelection && currentSelection.count > 1 && (
+          {!isImageLocked && currentSelection && currentSelection.count > 1 && (
             <Alert
             title="Only one image can be processed at a time."
             tone="critical"
@@ -721,7 +785,7 @@ export const App = () => {
               Please select a single image in your design.
               </Alert>
             )} 
-        {(file || (currentSelection.count === 1)) && !(sysError?.status && sysError.type === "fileSize") && (
+        {(file || isImageLocked) && !(sysError?.status && sysError.type === "fileSize") && (
           <>
             {/* {showTip && (
               <Alert
@@ -750,13 +814,15 @@ export const App = () => {
                   position: "relative",
                 }}
               >
-                {(imgPreviewUrl || imgSelectionUrl) && (
+                {(isImageLocked || imgPreviewUrl || imgSelectionUrl) && (
                   <>
                     <img
                       ref={imageRef}
                       src={removeBackground && removedBgImage 
                         ? removedBgImage 
-                        : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!)}
+                        : (isImageLocked && lockedImageUrl 
+                           ? lockedImageUrl 
+                           : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!))}
                       alt={fileName}
                       onLoad={() => {
                         // Image loaded, trigger preview rendering
@@ -766,6 +832,8 @@ export const App = () => {
                         maxWidth: '100%',
                         maxHeight: '100%',
                         objectFit: 'contain',
+                        // 添加硬件加速以提高渲染性能
+                        transform: 'translateZ(0)',
                       }}
                     />
                     
@@ -812,11 +880,15 @@ export const App = () => {
                           opacity: transparency / 100,
                           maskImage: `url(${removeBackground && removedBgImage 
                             ? removedBgImage 
-                            : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!)})`,
+                            : (isImageLocked && lockedImageUrl 
+                               ? lockedImageUrl 
+                               : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!))})`,
                           maskSize: '100% 100%',
                           WebkitMaskImage: `url(${removeBackground && removedBgImage 
                             ? removedBgImage 
-                            : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!)})`,
+                            : (isImageLocked && lockedImageUrl 
+                               ? lockedImageUrl 
+                               : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!))})`,
                           WebkitMaskSize: '100% 100%',
                           pointerEvents: 'none',
                         }}
@@ -836,11 +908,15 @@ export const App = () => {
                           opacity: simplePictorialConfig.transparency / 100,
                           maskImage: `url(${removeBackground && removedBgImage 
                             ? removedBgImage 
-                            : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!)})`,
+                            : (isImageLocked && lockedImageUrl 
+                               ? lockedImageUrl 
+                               : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!))})`,
                           maskSize: '100% 100%',
                           WebkitMaskImage: `url(${removeBackground && removedBgImage 
                             ? removedBgImage 
-                            : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!)})`,
+                            : (isImageLocked && lockedImageUrl 
+                               ? lockedImageUrl 
+                               : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!))})`,
                           WebkitMaskSize: '100% 100%',
                           pointerEvents: 'none',
                         }}
@@ -868,11 +944,15 @@ export const App = () => {
                           mixBlendMode: noiseLevel > 50 ? 'hard-light' : 'overlay', // 根据噪声级别调整混合模式
                           maskImage: `url(${removeBackground && removedBgImage 
                             ? removedBgImage 
-                            : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!)})`,
+                            : (isImageLocked && lockedImageUrl 
+                               ? lockedImageUrl 
+                               : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!))})`,
                           maskSize: '100% 100%',
                           WebkitMaskImage: `url(${removeBackground && removedBgImage 
                             ? removedBgImage 
-                            : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!)})`,
+                            : (isImageLocked && lockedImageUrl 
+                               ? lockedImageUrl 
+                               : (currentSelection.count === 1 ? imgSelectionUrl! : imgPreviewUrl!))})`,
                           WebkitMaskSize: '100% 100%',
                           pointerEvents: 'none',
                         }}
@@ -881,23 +961,44 @@ export const App = () => {
                   </>
                 )}
              </div>
-             {/* <Columns alignY="center" align="spaceBetween" spacing="1u"> */}
-                {/* <Column width="content">
-                  <Text><b>Remove image background</b></Text>
-                </Column> */}
-                {/* <Column width="content"> */}
-                <Box paddingBottom="0.5u">
-                  <Switch
-                    value={removeBackground}
-                    label="Remove background"
-                    description="Ideal for simple backgrounds and Canva's BG Remover works best for complex images."
-                    onChange={(value)=>{
-                      setRemoveBackground(value);
-                    }}
-                  />
-                </Box>
-                {/* </Column> */}
-             {/* </Columns> */}
+             <Box paddingBottom="0.5u">
+               <Button
+                 stretch
+                 variant="secondary"
+                 loading={isRemovingBackground ? true : undefined}
+                 disabled={isRemovingBackground}
+                 onClick={() => {
+                   // 只有当有图片可用且未在抠图过程中时才执行
+                   if (!isRemovingBackground && ((file && typeof file === 'string') || currentSelection.count === 1 || (isImageLocked && lockedImageBase64))) {
+                     if (!removeBackground) {
+                       // 先设置状态，然后触发处理
+                       setRemoveBackground(true);
+                       setManualRemoveBackground(true); // 设置手动触发标志
+                       
+                       // 不需要在这里直接调用processRemoveBackground，由useEffect处理
+                     } else {
+                       // 如果已经是移除背景状态，设置为false，恢复原图
+                       setRemoveBackground(false);
+                       setRemovedBgImage(null);
+                       // 确保预览能刷新显示
+                       setPreviewReady(false);
+                       setTimeout(() => setPreviewReady(true), 50);
+                     }
+                   } else if (!isRemovingBackground) {
+                     // 没有可用图片时显示错误
+                     setSysError({
+                       status: true,
+                       type: 'backgroundRemoval',
+                       errMsg: 'Please select or upload an image first'
+                     });
+                   }
+                 }}
+               >
+                 {isRemovingBackground 
+                   ? "Removing background..." 
+                   : (removeBackground && removedBgImage ? "Restore original" : "Remove background")}
+               </Button>
+             </Box>
              <SegmentedControl
                 defaultValue="gradients"
                 options={[
@@ -921,6 +1022,7 @@ export const App = () => {
                     <b>Gradient colors</b>
                   </Text>
                   <GradientPicker
+                    colors={gradientColors}
                     onChange={(colors) => {
                       setGradientColors([...colors]);
                     }}
@@ -1010,7 +1112,7 @@ export const App = () => {
                 </Box>
               </Rows>
             )}
-            <Box paddingTop="2u" paddingBottom="1.5u" display="flex" flexDirection="column" alignItems="center">
+            <Box paddingTop="2u" paddingBottom="0" display="flex" flexDirection="column" alignItems="center">
               <Button
                 variant="primary"
                 onClick={startFill}
@@ -1018,9 +1120,41 @@ export const App = () => {
                 loading={isGenerating ? true : undefined}
                 disabled={isGenerating}
               >
-                Generate
+                Add to design
               </Button>
             </Box>
+             
+              {/* 添加Start over按钮 */}
+              <Box paddingTop="0">
+                <Button
+                  stretch
+                  variant="secondary"
+                  onClick={() => {
+                    console.log("Start over button clicked, resetting states");
+                    
+                    // 首先重置file状态，这是触发上传界面显示的关键
+                    setFile(false);
+                    setFileName('');
+                    setIsImageLocked(false);
+
+                    // 使用setTimeout确保状态更新的顺序性
+                    setTimeout(() => {
+                      // 接着重置其他状态
+                      setImgPreviewUrl(null);
+                      setRemoveBackground(false);
+                      setRemovedBgImage(null);
+                      setLockedImageUrl(null);
+                      setLockedImageBase64(null);
+                      setImgSelectionUrl(null);
+                      setPreviewReady(false);
+                      setSysError({ status: false, type: "", errMsg: "" });
+                      console.log("All states reset complete");
+                    }, 2);
+                  }}
+                >
+                  Re-select image
+                </Button>
+              </Box>
           </>
         )}
       </Rows>
