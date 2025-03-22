@@ -5,27 +5,19 @@ import {
   Rows,
   Text,
   Swatch,
-  ColorSelector,
   FileInput,
-  Grid,
   Box,
   Title,
   Slider,
-  Link,
-  VideoCard,
   FileInputItem,
   Alert,
   LoadingIndicator,
-  Switch,
-  ImageCard,
-  NumberInput,
   Column,
-  OpenInNewIcon,
-  RadioGroup,
-  PlusIcon,
+  ReloadIcon,
   TrashIcon,
-  PlayFilledIcon,
   SegmentedControl,
+  BackgroundIcon,
+  UndoIcon,
 } from "@canva/app-ui-kit";
 import { openColorSelector,CloseColorSelectorFn } from "@canva/asset";
 import * as React from "react";
@@ -201,6 +193,9 @@ export const App = () => {
 
   // 在state声明部分添加一个标志位，表示用户是否手动点击了抠图按钮
   const [manualRemoveBackground, setManualRemoveBackground] = React.useState(false);
+
+  // 在其他状态声明旁边添加
+  const [controlReset, setControlReset] = React.useState(0);
 
   const getUserInfo = React.useCallback(async () => {
     try {
@@ -544,106 +539,125 @@ export const App = () => {
         errMsg: e.message || 'Error processing image'
       });
     } finally {
-      setIsGenerating(false);
+      // setIsGenerating(false);
+      // 使用setTimeout确保状态更新和UI渲染顺序正确
+      setTimeout(() => {
+        setIsGenerating(false);
+      }, 50);
     }
   };
 
   // 在组件中添加图片ref
   const imageRef = React.useRef<HTMLImageElement>(null);
 
-  // 更新移除背景的函数，确保正确处理不同来源的图片
+  // 简化版的背景移除错误处理
   const processRemoveBackground = async (imageSource: string | null) => {
     try {
-      // 设置特定的背景移除加载状态
+      // 开始前清除之前的错误
+      setSysError({ status: false, type: "", errMsg: "" });
+      
+      // 设置背景移除加载状态
       setIsRemovingBackground(true);
-      console.log("processRemoveBackground called with source:", imageSource ? "Has image source" : "No image source");
       
       let imageBase64: string;
       
-      // 如果是通过选择方式获取的图片
+      // 获取图像数据
       if (!imageSource && currentSelection.count === 1) {
-        console.log("Getting image from selection");
         imageBase64 = await getSelectionImage();
-        console.log("Selection image obtained:", imageBase64 ? "Image obtained successfully" : "Failed to get image");
         if (!imageBase64) {
           throw new Error('Failed to get selected image');
         }
       } else if (imageSource && typeof imageSource === 'string') {
-        // 如果是通过上传方式获取的图片
-        console.log("Using provided image source");
         imageBase64 = imageSource;
       } else {
-        console.log("No valid image source available");
         throw new Error('No image available');
       }
       
-      console.log("Image base64 string length:", imageBase64.length);
-      console.log("Image base64 starts with:", imageBase64.substring(0, 50));
-      
-      // 确保只传递base64部分而不是完整的data URL
+      // 确保只传递base64部分
       const base64Data = imageBase64.includes('base64,') 
         ? imageBase64.split('base64,')[1] 
         : imageBase64;
       
-      console.log("Base64 data prepared, length:", base64Data.length);
-      console.log("Calling API for background removal");
-      
-      const token = await auth.getCanvaUserToken();
-      const response = await fetch(`${API_BASE_URL}/api/cutout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          image: base64Data
-        })
-      });
-      
-      console.log("API response status:", response.status);
-      
-      if (!response.ok) {
-        console.error("API error response:", response);
-        throw new Error('Failed to remove background');
+      // 获取认证令牌 - 可能出现网络错误
+      let token;
+      try {
+        token = await auth.getCanvaUserToken();
+      } catch (authError) {
+        // 网络连接/认证错误
+        throw { isNetworkError: true };
       }
       
-      // Convert response to blob then to base64
+      // 调用API - 可能出现网络错误
+      let response;
+      try {
+        response = await fetch(`${API_BASE_URL}/api/cutout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            image: base64Data
+          })
+        });
+      } catch (networkError) {
+        // API调用网络错误
+        throw { isNetworkError: true };
+      }
+      
+      // 检查响应状态
+      if (!response.ok) {
+        // 所有API错误使用一个通用错误
+        throw new Error('API error');
+      }
+      
+      // 处理响应
       const blob = await response.blob();
-      console.log("Response blob size:", blob.size);
       const reader = new FileReader();
       
-      // 使用Promise包装reader操作，确保完成后再更新状态
+      // 读取响应数据
       await new Promise((resolve, reject) => {
         reader.onloadend = () => {
           try {
-            console.log("FileReader completed");
             const base64data = reader.result as string;
             setRemovedBgImage(base64data);
-            setPreviewReady(true); // Update preview
+            setPreviewReady(true);
             resolve(base64data);
           } catch (err) {
-            console.error("Error in FileReader onloadend:", err);
             reject(err);
           }
         };
-        reader.onerror = (error) => {
-          console.error("FileReader error:", error);
-          reject(error);
-        };
+        reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-      console.log("Background removal completed successfully");
-    } catch (error) {
+      
+      // 操作成功，清除错误
+      setSysError({ status: false, type: "", errMsg: "" });
+      
+    } catch (error: any) {
       console.error('Error removing background:', error);
-      setSysError({
-        status: true,
-        type: 'backgroundRemoval',
-        errMsg: 'Failed to remove background'
-      });
-      setRemoveBackground(false); // Reset switch if operation fails
+      
+      // 简化为两种错误情况
+      if (error && error.isNetworkError) {
+        // 网络连接错误
+        setSysError({
+          status: true,
+          type: 'backgroundRemoval-network',
+          errMsg: "We couldn't remove the image's background. Check that you're connected to the internet, then try again."
+        });
+      } else {
+        // 通用错误 - 包括所有其他情况
+        setSysError({
+          status: true,
+          type: 'backgroundRemoval',
+          errMsg: "We couldn't remove the image's background. Wait a few moments, then try again."
+        });
+      }
+      
+      // 重置背景移除状态
+      setRemoveBackground(false);
     } finally {
-      // 确保无论成功或失败都更新状态
-      console.log("Background removal process finished, resetting loading state");
+      // 重置加载状态
       setIsRemovingBackground(false);
     }
   };
@@ -704,7 +718,8 @@ export const App = () => {
 
   return (
     <div className={styles.scrollContainer}>
-      {sysError?.status && sysError.type==='imageFillError' && (
+      {/* 背景移除错误信息 */}
+      {sysError?.status && (sysError.type === 'backgroundRemoval' || sysError.type === 'backgroundRemoval-network') && (
         <Alert
           tone="critical"
           onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
@@ -712,7 +727,17 @@ export const App = () => {
           {sysError.errMsg}
         </Alert>
       )}
-      <Rows spacing="1.5u">
+      
+      {/* 现有的其他错误 */}
+      {sysError?.status && sysError.type === 'imageFillError' && (
+        <Alert
+          tone="critical"
+          onDismiss={() => setSysError({ status: false, type: "", errMsg: "" })}
+        >
+          {sysError.errMsg}
+        </Alert>
+      )}
+      <Rows spacing="1u">
         <>
         {(!isImageLocked) && (
           <>
@@ -814,6 +839,85 @@ export const App = () => {
                   position: "relative",
                 }}
               >
+                {/* 添加右上角按钮组 - 修改样式为深灰色透明的圆角背景 */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '8px',
+                    right: '8px',
+                    zIndex: 20,
+                    display: 'flex',
+                    gap: '8px' // 增加按钮间距
+                  }}
+                >
+                  {/* 重置渐变方向按钮 */}
+                  <div
+                    style={{
+                      width: '36px', // 固定宽度
+                      height: '36px', // 固定高度
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Button
+                      ariaLabel="Reset position"
+                      icon={ReloadIcon}
+                      size="medium"
+                      type="button"
+                      variant="contrast"
+                      onClick={() => {
+                        // 重置渐变角度到初始值
+                        setGradientAngle(45);
+                        
+                        // 递增重置计数器，强制控制杆组件重新挂载
+                        setControlReset(prev => prev + 1);
+                      }}
+                    />
+                  </div>
+                  
+                  {/* 重新选择图片按钮 */}
+                  <div
+                    style={{
+                      width: '36px', // 固定宽度
+                      height: '36px', // 固定高度
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Button
+                      ariaLabel="Remove"
+                      icon={TrashIcon}
+                      size="medium"
+                      type="button"
+                      variant="contrast"
+                      onClick={() => {
+                        console.log("Start over button clicked, resetting states");
+                        
+                        // 首先重置file状态，这是触发上传界面显示的关键
+                        setFile(false);
+                        setFileName('');
+                        setIsImageLocked(false);
+
+                        // 使用setTimeout确保状态更新的顺序性
+                        setTimeout(() => {
+                          // 接着重置其他状态
+                          setImgPreviewUrl(null);
+                          setRemoveBackground(false);
+                          setRemovedBgImage(null);
+                          setLockedImageUrl(null);
+                          setLockedImageBase64(null);
+                          setImgSelectionUrl(null);
+                          setPreviewReady(false);
+                          setSysError({ status: false, type: "", errMsg: "" });
+                          console.log("All states reset complete");
+                        }, 2);
+                      }}
+                    />
+                  </div>
+                </div>
+                
                 {(isImageLocked || imgPreviewUrl || imgSelectionUrl) && (
                   <>
                     <img
@@ -837,16 +941,17 @@ export const App = () => {
                       }}
                     />
                     
-                    {/* 加载遮罩 */}
+                    {/* 加载遮罩 - 更新为使用标准overlay颜色和dark类 */}
                     {isRemovingBackground && (
                       <div 
+                        className="dark"
                         style={{
                           position: 'absolute',
                           top: 0,
                           left: 0,
                           width: '100%',
                           height: '100%',
-                          backgroundColor: 'rgba(240, 240, 240, 0.7)',
+                          backgroundColor: 'var(--ui-kit-color-overlay)',
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'center',
@@ -855,10 +960,12 @@ export const App = () => {
                           borderRadius: '8px',
                         }}
                       >
-                        <LoadingIndicator size="small"/>
-                        <Text tone="secondary" size="small">
-                          Removing background...
-                        </Text>
+                        <LoadingIndicator size="medium"/>
+                        <Box paddingTop="1u">
+                          <Text tone="secondary" size="small">
+                            Removing background...
+                          </Text>
+                        </Box>
                       </div>
                     )}
                     
@@ -927,6 +1034,7 @@ export const App = () => {
                       <GradientDirectionControl
                         colorStops={gradientColors}
                         onChange={setGradientAngle}
+                        key={`gradient-control-${controlReset}`}
                       />
                     )}
 
@@ -961,9 +1069,11 @@ export const App = () => {
                   </>
                 )}
              </div>
-             <Box paddingBottom="0.5u">
+             <Rows spacing="3u">
+             <Box paddingBottom="0.5u" paddingTop="0.5u">
                <Button
                  stretch
+                 icon={removeBackground && removedBgImage ? UndoIcon : BackgroundIcon}
                  variant="secondary"
                  loading={isRemovingBackground ? true : undefined}
                  disabled={isRemovingBackground}
@@ -996,165 +1106,173 @@ export const App = () => {
                >
                  {isRemovingBackground 
                    ? "Removing background..." 
-                   : (removeBackground && removedBgImage ? "Restore original" : "Remove background")}
+                   : (removeBackground && removedBgImage ? "Restore background" : "Remove background")}
                </Button>
              </Box>
-             <SegmentedControl
-                defaultValue="gradients"
-                options={[
-                  {
-                    label: 'Gradients',
-                    value: 'gradients'
-                  },
-                  {
-                    label: 'One color',
-                    value: 'onecolor'
-                  }
-                ]}
-                onChange={(value)=>{
-                  setColorMode(value);  
-                }}
-            />
-            {colorMode === 'gradients' && (
+             {/* 添加取消按钮 - 仅在抠图过程中显示 */}
+             {isRemovingBackground && (
+               <Box paddingBottom="0.5u">
+                 <Button
+                   stretch
+                   variant="secondary"
+                   onClick={() => {
+                     // 立即重置移除背景状态
+                     setIsRemovingBackground(false);
+                     setRemoveBackground(false);
+                     setManualRemoveBackground(false);
+                     
+                     // 清除可能存在的错误状态
+                     setSysError({ 
+                       status: false, 
+                       type: "", 
+                       errMsg: "" 
+                     });
+                   }}
+                 >
+                   Cancel
+                 </Button>
+               </Box>
+             )}
+             <Box>
+               <FormField
+                 label="Colorize"
+                 description={colorMode === 'gradients' ? "Tap or click on the gradient strip to add a color" : undefined}
+                 control={(props) => (
+                   <SegmentedControl
+                     defaultValue="gradients"
+                     options={[
+                       {
+                         label: 'Gradient',
+                         value: 'gradients'
+                       },
+                       {
+                         label: 'Solid color',
+                         value: 'onecolor'
+                       }
+                     ]}
+                     onChange={(value)=>{
+                       setColorMode(value);  
+                     }}
+                   />
+                 )}
+               />
+
+               {/* 根据colorMode显示不同的颜色选择组件 */}
+               {colorMode === 'gradients' ? (
+                 <Box paddingTop="1u">
+                   <GradientPicker
+                     colors={gradientColors}
+                     onChange={(colors) => {
+                       setGradientColors([...colors]);
+                     }}
+                   />
+                 </Box>
+               ) : (
+                 <Box paddingTop="1u">
+                   <Columns align="spaceBetween" spacing="1u" alignY="baseline">
+                     <Column width="content">
+                       <Text>
+                         <b>Fill color</b>
+                       </Text>
+                     </Column>
+                     <Column width="content">
+                       <Swatch
+                         fill={[oneColor]}
+                         onClick={async (event) => {
+                           const anchor = event.currentTarget.getBoundingClientRect();
+                           const closeColorSelector = await openColorSelector(anchor, {
+                             scopes: ["solid"],
+                             selectedColor: oneColor
+                             ? {
+                                 type: "solid",
+                                 hexString: oneColor,
+                               }
+                             : undefined,
+                             onColorSelect: (event) => {
+                               if (event.selection.type === "solid") {
+                                 setOneColor(event.selection.hexString);
+                               } 
+                             },
+                           });
+                         }}
+                       />
+                     </Column>
+                   </Columns>
+                 </Box>
+               )}
+             </Box>
+          
+            {/* 控制选项 - 根据colorMode动态显示 */}
+            {colorMode === 'gradients' ? (
               <>
-                <Box paddingY="0">
-                  <Text>
-                    <b>Gradient colors</b>
-                  </Text>
-                  <GradientPicker
-                    colors={gradientColors}
-                    onChange={(colors) => {
-                      setGradientColors([...colors]);
-                    }}
+                <Box paddingTop="0" paddingBottom="0">
+                  <FormField
+                    label="Transparency"
+                    control={(props) => (
+                      <Box paddingStart="1.5u">
+                        <Slider
+                          defaultValue={transparency}
+                          max={100}
+                          min={0}
+                          step={1}
+                          onChange={(value) => setTransparency(value)}
+                        />
+                      </Box>
+                    )}
                   />
-                </Box>
+                </Box>  
                 <Box>
-                  <Text>
-                    <b>Transparency</b>
-                  </Text>
-                  <Box paddingStart="1.5u">
-                    <Slider
-                      defaultValue={transparency}
-                      max={100}
-                      min={0}
-                      step={1}
-                      onChange={(value) => setTransparency(value)}
-                    />
-                  </Box>
-                </Box>
-                <Box>
-                  <Text>
-                    <b>Noise level</b>
-                  </Text>
-                  <Box paddingStart="1.5u">
-                    <Slider
-                      defaultValue={noiseLevel}
-                      max={100}
-                      min={0}
-                      step={1}
-                      onChange={(value) => setNoiseLevel(value)}
-                    />
-                  </Box>
-                </Box>
+                  <FormField
+                    label="Noise level"
+                    control={(props) => (
+                      <Box paddingStart="1.5u">
+                        <Slider
+                          defaultValue={noiseLevel}
+                          max={100}
+                          min={0}
+                          step={1}
+                          onChange={(value) => setNoiseLevel(value)}
+                        />
+                      </Box>
+                    )}
+                  />
+                </Box>  
               </>
-            )}
-           
-            {colorMode === 'onecolor' && (
-              <Rows spacing="2u">
-                <Columns align="spaceBetween" spacing="1u" alignY="baseline">
-                  <Column width="content">
-                    <Text>
-                      <b>Fill color</b>
-                    </Text>
-                  </Column>
-                  <Column width="content">
-                    <Swatch
-                        fill={[oneColor]}
-                        onClick={async (event) => {
-                          const anchor = event.currentTarget.getBoundingClientRect();
-                          const closeColorSelector = await openColorSelector(anchor, {
-                            scopes: ["solid"],
-                            selectedColor: oneColor
-                            ? {
-                                type: "solid",
-                                hexString: oneColor,
-                              }
-                            : undefined,
-                            onColorSelect: (event) => {
-                              if (event.selection.type === "solid") {
-                                setOneColor(event.selection.hexString);
-                              } 
-                            },
-                          });
-                          // closeColorSelector();
+            ) : (
+              <Box>
+                <FormField
+                  label="Transparency"
+                  control={(props) => (
+                    <Box paddingStart="1.5u">
+                      <Slider
+                        defaultValue={simplePictorialConfig.transparency}
+                        max={100}
+                        min={0}
+                        step={1}
+                        onChange={(value) => {
+                          setSimplePictorialConfig(prev => ({
+                            ...prev,
+                            transparency: value
+                          }));
                         }}
                       />
-                  </Column>
-                </Columns>
-                <Box>
-                  <Text>
-                    <b>Transparency</b>
-                  </Text>
-                  <Box paddingStart="1.5u">
-                    <Slider
-                      defaultValue={simplePictorialConfig.transparency}
-                      max={100}
-                      min={0}
-                      step={1}
-                      onChange={(value) => {
-                        setSimplePictorialConfig(prev => ({
-                          ...prev,
-                          transparency: value
-                        }));
-                      }}
-                    />
-                  </Box>
-                </Box>
-              </Rows>
+                    </Box>
+                  )}
+                />
+              </Box>
             )}
+            </Rows>  
             <Box paddingTop="2u" paddingBottom="0" display="flex" flexDirection="column" alignItems="center">
               <Button
                 variant="primary"
                 onClick={startFill}
                 stretch
                 loading={isGenerating ? true : undefined}
-                disabled={isGenerating}
+                // disabled={isGenerating}
               >
                 Add to design
               </Button>
             </Box>
-             
-              {/* 添加Start over按钮 */}
-              <Box paddingTop="0">
-                <Button
-                  stretch
-                  variant="secondary"
-                  onClick={() => {
-                    console.log("Start over button clicked, resetting states");
-                    
-                    // 首先重置file状态，这是触发上传界面显示的关键
-                    setFile(false);
-                    setFileName('');
-                    setIsImageLocked(false);
-
-                    // 使用setTimeout确保状态更新的顺序性
-                    setTimeout(() => {
-                      // 接着重置其他状态
-                      setImgPreviewUrl(null);
-                      setRemoveBackground(false);
-                      setRemovedBgImage(null);
-                      setLockedImageUrl(null);
-                      setLockedImageBase64(null);
-                      setImgSelectionUrl(null);
-                      setPreviewReady(false);
-                      setSysError({ status: false, type: "", errMsg: "" });
-                      console.log("All states reset complete");
-                    }, 2);
-                  }}
-                >
-                  Re-select image
-                </Button>
-              </Box>
           </>
         )}
       </Rows>

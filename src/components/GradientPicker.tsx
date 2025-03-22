@@ -175,11 +175,12 @@ export const GradientPicker: React.FC<GradientPickerProps> = ({ onChange, colors
   return (
     <div style={{ 
       position: 'relative', 
-      width: '90%',
-      height: '70px',
-      paddingTop: '40px',
+      width: '86%',
+      height: '60px',
+      paddingTop: '0px',
+      paddingBottom: '40px',
       margin: '0 auto',
-      paddingLeft: '12px',
+      paddingLeft: '8px',
       display: 'flex',
       justifyContent: 'center',
       alignItems: 'center',
@@ -196,65 +197,71 @@ export const GradientPicker: React.FC<GradientPickerProps> = ({ onChange, colors
           cursor: 'pointer'
         }}
       >
-        {colorStops.map((stop) => (
-          <div
-            key={stop.id}
-            style={{
-              position: 'absolute',
-              left: `${stop.position}%`,
-              top: '50%',
-              transform: 'translate(-50%, -50%)',
-              zIndex: draggingStop === stop.id || selectedStop === stop.id ? 1000 : 1,
-              pointerEvents: draggingStop && draggingStop !== stop.id ? 'none' : 'auto',
-            }}
-          >
-            <div style={{ 
-              position: 'absolute',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              bottom: '150%',
-              zIndex: draggingStop === stop.id || selectedStop === stop.id ? 1000 : 1,
-            }}>
-              <Swatch
-                fill={[stop.color]}
-                onClick={async (event) => {
-                  const anchor = event.currentTarget.getBoundingClientRect();
-                  const closeColorSelector = await openColorSelector(anchor, {
-                    scopes: ["solid"],
-                    selectedColor: {
-                      type: "solid",
-                      hexString: stop.color,
-                    },
-                    onColorSelect: (event) => {
-                      if (event.selection.type === "solid") {
-                        handleColorChange(stop.id, event.selection.hexString);
-                      }
-                    },
-                  });
+        {[...colorStops]
+          .sort((a, b) => {
+            if (a.id === selectedStop) return 1;
+            if (b.id === selectedStop) return -1;
+            return 0;
+          })
+          .map((stop) => (
+            <div
+              key={stop.id}
+              style={{
+                position: 'absolute',
+                left: `${stop.position}%`,
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+                zIndex: draggingStop === stop.id ? 10 : 5,
+                pointerEvents: draggingStop && draggingStop !== stop.id ? 'none' : 'auto',
+              }}
+            >
+              <div style={{ 
+                position: 'absolute',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                top: '150%',
+                zIndex: 5, 
+              }}>
+                <Swatch
+                  fill={[stop.color]}
+                  onClick={async (event) => {
+                    const anchor = event.currentTarget.getBoundingClientRect();
+                    const closeColorSelector = await openColorSelector(anchor, {
+                      scopes: ["solid"],
+                      selectedColor: {
+                        type: "solid",
+                        hexString: stop.color,
+                      },
+                      onColorSelect: (event) => {
+                        if (event.selection.type === "solid") {
+                          handleColorChange(stop.id, event.selection.hexString);
+                        }
+                      },
+                    });
+                  }}
+                  onDelete={colorStops.length > 2 ? () => handleDeleteStop(stop.id) : undefined}
+                />
+              </div>
+              <div
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  border: `${selectedStop === stop.id ? '3px' : '2px'} solid white`,
+                  backgroundColor: stop.color,
+                  cursor: 'move',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                  zIndex: 6,
                 }}
-                onDelete={colorStops.length > 2 ? () => handleDeleteStop(stop.id) : undefined}
+                onMouseDown={(e) => handleStopDragStart(stop.id, e)}
+                onMouseUp={handleStopDragEnd}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedStop(stop.id);
+                }}
               />
             </div>
-            <div
-              style={{
-                width: '20px',
-                height: '20px',
-                borderRadius: '50%',
-                border: `${selectedStop === stop.id ? '3px' : '2px'} solid white`,
-                backgroundColor: stop.color,
-                cursor: 'move',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                zIndex: draggingStop === stop.id || selectedStop === stop.id ? 1000 : 1,
-              }}
-              onMouseDown={(e) => handleStopDragStart(stop.id, e)}
-              onMouseUp={handleStopDragEnd}
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedStop(stop.id);
-              }}
-            />
-          </div>
-        ))}
+          ))}
       </div>
     </div>
   );

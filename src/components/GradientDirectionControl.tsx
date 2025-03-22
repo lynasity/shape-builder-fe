@@ -16,6 +16,7 @@ export const GradientDirectionControl: React.FC<GradientDirectionControlProps> =
   const [draggingPoint, setDraggingPoint] = React.useState<'start' | 'end' | null>(null);
   // 存储当前边缘颜色的状态
   const [edgeColors, setEdgeColors] = React.useState({ startColor: '#000000', endColor: '#ffffff' });
+  const [controlReset, setControlReset] = React.useState(0);
 
   // 计算角度和更新状态
   const updatePoints = (newStart: { x: number; y: number } | null, newEnd: { x: number; y: number } | null) => {
