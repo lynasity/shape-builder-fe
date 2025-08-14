@@ -54,7 +54,7 @@ interface CanvaShape {
 }
 
 // Boolean operation types
-type BooleanOperationType = 'union' | 'intersect' | 'subtract';
+type BooleanOperationType = 'union' | 'intersect' | 'subtract' | 'exclude' | 'fragment';
 
 // Stroke configuration interface
 interface StrokeConfig {
@@ -172,6 +172,43 @@ const BooleanOperations: React.FC = () => {
         case 'subtract':
           result = compound1.subtract(compound2) as paper.Path;
           break;
+        case 'exclude':
+          // Exclude operation: use Paper.js native exclude method
+          result = compound1.exclude(compound2) as paper.Path;
+          break;
+        case 'fragment':
+          // Fragment operation: split all shapes into independent parts
+          console.log('Generating fragment preview - splitting all parts');
+          
+          const intersections = compound1.getIntersections(compound2);
+          console.log(`Found ${intersections.length} intersection points`);
+          
+          let fragmentParts: paper.Path[] = [];
+          
+          if (intersections.length > 0) {
+            // Get all fragment parts: shape1 parts, shape2 parts, and intersection
+            const shape1Minus2 = compound1.subtract(compound2) as paper.Path;
+            const shape2Minus1 = compound2.subtract(compound1) as paper.Path;
+            const intersection = compound1.intersect(compound2) as paper.Path;
+            
+            // Add non-empty parts
+            if (shape1Minus2 && !shape1Minus2.isEmpty()) fragmentParts.push(shape1Minus2);
+            if (shape2Minus1 && !shape2Minus1.isEmpty()) fragmentParts.push(shape2Minus1);
+            if (intersection && !intersection.isEmpty()) fragmentParts.push(intersection);
+            
+            console.log(`Fragment parts: shape1-only=${!shape1Minus2?.isEmpty()}, shape2-only=${!shape2Minus1?.isEmpty()}, intersection=${!intersection?.isEmpty()}`);
+          } else {
+            // No intersections, use original shapes as separate parts
+            fragmentParts = [compound1, compound2];
+            console.log('No intersections found, using separate shapes');
+          }
+          
+          console.log(`Fragment operation generated ${fragmentParts.length} total parts`);
+          
+          // Create a compound path containing all fragments
+          result = new paper.CompoundPath({ children: fragmentParts }) as any;
+          (result as any)._isFragment = true; // Mark for special handling
+          break;
         default:
           setPreviewSvg(null);
           return;
@@ -230,24 +267,46 @@ const BooleanOperations: React.FC = () => {
         `stroke="${strokeConfig.color}" stroke-width="${strokeConfig.weight}"` : 
         'stroke="none"';
 
-      const svgContent = `
-        <svg 
-          width="200" 
-          height="150" 
-          viewBox="${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}"
-          xmlns="http://www.w3.org/2000/svg"
-          style="border: 1px solid #e5e7eb; border-radius: 8px; background: white;"
-        >
-          <path 
-            d="${result.pathData}" 
-            fill="${fillStyle}" 
-            ${strokeStyle}
-            fill-rule="evenodd"
-          />
-        </svg>
-      `;
+      // Special handling for Fragment operation - show multiple parts with user's fill color
+      if (operation === 'fragment' && (result as any)._isFragment) {
+        const fragmentParts = (result as any).children || [];
+        
+        const fragmentPaths = fragmentParts.map((part: any, index: number) => {
+          return `<path d="${part.pathData}" fill="${fillStyle}" ${strokeStyle} fill-rule="evenodd" />`;
+        }).join('\n          ');
 
-      setPreviewSvg(svgContent);
+        const svgContent = `
+          <svg 
+            width="200" 
+            height="150" 
+            viewBox="${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}"
+            xmlns="http://www.w3.org/2000/svg"
+            style="border: 1px solid #e5e7eb; border-radius: 8px; background: white;"
+          >
+            ${fragmentPaths}
+          </svg>
+        `;
+        setPreviewSvg(svgContent);
+      } else {
+        // Regular single-path preview
+        const svgContent = `
+          <svg 
+            width="200" 
+            height="150" 
+            viewBox="${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}"
+            xmlns="http://www.w3.org/2000/svg"
+            style="border: 1px solid #e5e7eb; border-radius: 8px; background: white;"
+          >
+            <path 
+              d="${result.pathData}" 
+              fill="${fillStyle}" 
+              ${strokeStyle}
+              fill-rule="evenodd"
+            />
+          </svg>
+        `;
+        setPreviewSvg(svgContent);
+      }
 
     } catch (error) {
       console.error('Preview generation failed:', error);
@@ -746,6 +805,201 @@ const BooleanOperations: React.FC = () => {
         case 'subtract':
           result = compound1.subtract(compound2) as paper.Path;
           break;
+        case 'exclude':
+          // Exclude operation: use Paper.js native exclude method
+          console.log('Executing exclude operation using Paper.js exclude method');
+          result = compound1.exclude(compound2) as paper.Path;
+          console.log('Exclude result bounds:', result?.bounds);
+          break;
+        case 'fragment':
+          // Fragment operation: split all shapes into independent parts
+          console.log('Executing fragment operation - splitting all parts');
+          
+          const mainIntersections = compound1.getIntersections(compound2);
+          console.log(`Found ${mainIntersections.length} intersection points`);
+          
+          let mainFragmentParts: paper.Path[] = [];
+          
+          if (mainIntersections.length > 0) {
+            // Get all fragment parts: shape1 parts, shape2 parts, and intersection
+            const shape1Minus2 = compound1.subtract(compound2) as paper.Path;
+            const shape2Minus1 = compound2.subtract(compound1) as paper.Path;
+            const intersection = compound1.intersect(compound2) as paper.Path;
+            
+            console.log('=== FRAGMENT PARTS DETAILED ANALYSIS ===');
+            console.log('Shape1 bounds:', compound1.bounds);
+            console.log('Shape2 bounds:', compound2.bounds);
+            console.log('Shape1-only result:', {
+              exists: !!shape1Minus2,
+              isEmpty: shape1Minus2 ? shape1Minus2.isEmpty() : true,
+              bounds: shape1Minus2 ? shape1Minus2.bounds : null,
+              area: shape1Minus2 ? Math.abs(shape1Minus2.area || 0) : 0,
+              pathData: shape1Minus2 ? shape1Minus2.pathData?.substring(0, 100) : null
+            });
+            console.log('Shape2-only result:', {
+              exists: !!shape2Minus1,
+              isEmpty: shape2Minus1 ? shape2Minus1.isEmpty() : true,
+              bounds: shape2Minus1 ? shape2Minus1.bounds : null,
+              area: shape2Minus1 ? Math.abs(shape2Minus1.area || 0) : 0,
+              pathData: shape2Minus1 ? shape2Minus1.pathData?.substring(0, 100) : null
+            });
+            console.log('Intersection result:', {
+              exists: !!intersection,
+              isEmpty: intersection ? intersection.isEmpty() : true,
+              bounds: intersection ? intersection.bounds : null,
+              area: intersection ? Math.abs(intersection.area || 0) : 0,
+              pathData: intersection ? intersection.pathData?.substring(0, 100) : null
+            });
+            
+            // Add non-empty parts
+            if (shape1Minus2 && !shape1Minus2.isEmpty()) {
+              mainFragmentParts.push(shape1Minus2);
+              console.log('✓ Added shape1-only part to fragments');
+            } else {
+              console.log('✗ Shape1-only part is empty or invalid');
+            }
+            if (shape2Minus1 && !shape2Minus1.isEmpty()) {
+              mainFragmentParts.push(shape2Minus1);
+              console.log('✓ Added shape2-only part to fragments');
+            } else {
+              console.log('✗ Shape2-only part is empty or invalid');
+            }
+            if (intersection && !intersection.isEmpty()) {
+              mainFragmentParts.push(intersection);
+              console.log('✓ Added intersection part to fragments');
+            } else {
+              console.log('✗ Intersection part is empty or invalid');
+            }
+            console.log('=== END FRAGMENT ANALYSIS ===');
+          } else {
+            // No intersections, use original shapes as separate parts
+            mainFragmentParts = [compound1, compound2];
+            console.log('No intersections found, using separate shapes');
+          }
+          
+          console.log(`Fragment operation generated ${mainFragmentParts.length} independent parts`);
+          
+          // Debug the fragment parts before creating CompoundPath
+          console.log('Fragment parts before CompoundPath creation:');
+          mainFragmentParts.forEach((part, index) => {
+            console.log(`Part ${index + 1}:`, {
+              type: part.className,
+              bounds: part.bounds,
+              hasChildren: !!(part as any).children,
+              childrenCount: (part as any).children?.length || 0,
+              pathData: part.pathData?.substring(0, 50) + '...'
+            });
+          });
+          
+          // For Fragment operation, handle immediately without going through Union processing
+          console.log('Creating Fragment group immediately with original parts');
+          
+          if (mainFragmentParts.length > 1) {
+            // Multiple parts - create group directly
+            const fragmentChildren: any[] = [];
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            // Calculate overall bounds for all fragments
+            mainFragmentParts.forEach((fragmentPath: any) => {
+              const bounds = fragmentPath.bounds;
+              minX = Math.min(minX, bounds.x);
+              minY = Math.min(minY, bounds.y);
+              maxX = Math.max(maxX, bounds.x + bounds.width);
+              maxY = Math.max(maxY, bounds.y + bounds.height);
+            });
+            
+            // Create child elements for each fragment part using user's fill color
+            console.log(`About to create ${mainFragmentParts.length} fragment children directly`);
+            mainFragmentParts.forEach((fragmentPath: any, index: number) => {
+              const bounds = fragmentPath.bounds;
+              
+              // Normalize path to start from 0,0
+              const tempPath = fragmentPath.clone();
+              tempPath.translate(new paper.Point(-bounds.x, -bounds.y));
+              const normalizedPath = tempPath.pathData;
+              
+              const fragmentShapePath = generateShapePath(
+                normalizedPath,
+                fillConfig, // Use user's fill config
+                strokeConfig
+              );
+              
+              // Calculate relative position within the group
+              const relativeLeft = bounds.x - minX;
+              const relativeTop = bounds.y - minY;
+              
+              // Clamp dimensions and positions to Canva's limits
+              const clampedWidth = Math.min(Math.max(Math.ceil(bounds.width), 1), 32767);
+              const clampedHeight = Math.min(Math.max(Math.ceil(bounds.height), 1), 32767);
+              const clampedRelativeTop = Math.max(-32768, Math.min(32767, Math.floor(relativeTop)));
+              const clampedRelativeLeft = Math.max(-32768, Math.min(32767, Math.floor(relativeLeft)));
+              
+              fragmentChildren.push({
+                type: "shape",
+                paths: [fragmentShapePath],
+                viewBox: {
+                  top: 0,
+                  left: 0,
+                  width: clampedWidth,
+                  height: clampedHeight
+                },
+                width: clampedWidth,
+                height: clampedHeight,
+                top: clampedRelativeTop,
+                left: clampedRelativeLeft
+              });
+              
+              console.log(`Fragment part ${index + 1}:`, {
+                bounds: bounds,
+                relativeTo: { left: relativeLeft, top: relativeTop },
+                clampedSize: { width: clampedWidth, height: clampedHeight }
+              });
+            });
+            
+            // Create the group with all fragment parts
+            console.log(`Creating group directly with ${fragmentChildren.length} fragment children`);
+            await addElementAtPoint({
+              type: "group",
+              children: fragmentChildren
+            });
+            
+            console.log(`Successfully created fragment group directly with ${fragmentChildren.length} children`);
+            console.log('=== FRAGMENT OPERATION COMPLETED EARLY - SKIPPING PATH PROCESSING ===');
+            return; // Exit immediately, skip all path processing
+          } else if (mainFragmentParts.length === 1) {
+            // Single part - create single shape directly
+            const singlePath = mainFragmentParts[0];
+            const pathData = singlePath.pathData;
+            
+            const singleShapePath = generateShapePath(
+              pathData,
+              fillConfig,
+              strokeConfig
+            );
+            
+            const bounds = singlePath.bounds;
+            const singleViewBox = {
+              top: Math.max(-32768, Math.min(32767, Math.floor(bounds.y))),
+              left: Math.max(-32768, Math.min(32767, Math.floor(bounds.x))),
+              width: Math.min(Math.max(Math.ceil(bounds.width), 1), 32767),
+              height: Math.min(Math.max(Math.ceil(bounds.height), 1), 32767)
+            };
+            
+            await addElementAtPoint({
+              type: "shape",
+              paths: [singleShapePath],
+              viewBox: singleViewBox
+            });
+            
+            console.log('Successfully created single fragment shape directly');
+            console.log('=== FRAGMENT OPERATION COMPLETED EARLY - SKIPPING PATH PROCESSING ===');
+            return; // Exit immediately, skip all path processing
+          }
+          
+          // This should not happen, but fallback to normal processing
+          result = new paper.CompoundPath({ children: mainFragmentParts }) as any;
+          (result as any)._isFragment = true; // Mark this as a fragment result
+          break;
         default:
           throw new Error('Unsupported boolean operation type');
       }
@@ -805,6 +1059,14 @@ const BooleanOperations: React.FC = () => {
           
           console.log('Empty intersect shape created successfully');
           return; // Exit early for empty intersect
+        } else if (operation === 'exclude') {
+          // Exclude operation should not normally result in empty - this indicates an error
+          console.log('Exclude operation resulted in empty result - this should not happen normally');
+          throw new Error('Exclude operation failed to generate a valid result. This may indicate an issue with the input shapes.');
+        } else if (operation === 'fragment') {
+          // Fragment operation should not result in empty - this indicates an error
+          console.log('Fragment operation resulted in empty result - this should not happen normally');
+          throw new Error('Fragment operation failed to generate a valid result. This may indicate an issue with the input shapes.');
         } else {
           throw new Error('Boolean operation result is empty. Please check if the selected shapes have overlapping areas.');
         }
@@ -812,6 +1074,15 @@ const BooleanOperations: React.FC = () => {
 
       // Export result as SVG path string
       let resultPathData = result.pathData;
+      
+      // Debug: Check if Fragment CompoundPath structure changed after pathData access
+      if (operation === 'fragment' && (result as any)._isFragment) {
+        console.log('Fragment CompoundPath after pathData access:', {
+          type: result.className,
+          childrenCount: (result as any).children?.length || 0,
+          pathDataLength: resultPathData?.length || 0
+        });
+      }
       
       if (!resultPathData || resultPathData.length > 2000) {
         throw new Error('Result path is too complex or empty, cannot insert into Canva');
@@ -1151,7 +1422,7 @@ const BooleanOperations: React.FC = () => {
       const centerX = (shape1Pos.x + shape2Pos.x) / 2;
       const centerY = (shape1Pos.y + shape2Pos.y) / 2;
 
-      console.log('Creating union shape with:', {
+      console.log('Creating boolean operation result with:', {
         pathLength: resultPathData.length,
         pathData: resultPathData.substring(0, 100) + (resultPathData.length > 100 ? '...' : ''),
         viewBox: newViewBox,
@@ -1159,7 +1430,7 @@ const BooleanOperations: React.FC = () => {
         targetCenter: { x: centerX, y: centerY },
         color: defaultColor,
         pathBounds: pathBounds,
-        operation: 'union'
+        operation: operation
       });
 
       // Insert new shape into Canva
@@ -1178,10 +1449,139 @@ const BooleanOperations: React.FC = () => {
         viewBox: newViewBox
       });
 
-      // Check if Union operation resulted in multiple separate shapes
+      // Special handling for Fragment operation - always create group with independent parts
+      if (operation === 'fragment' && (result as any)._isFragment) {
+        console.log('=== FRAGMENT GROUP CREATION ===');
+        console.log('Fragment operation detected:', operation);
+        console.log('Result has _isFragment flag:', !!(result as any)._isFragment);
+        
+        // Get the fragment parts from the compound path
+        const fragmentPaths = (result as any).children || [];
+        console.log(`Fragment operation has ${fragmentPaths.length} independent parts`);
+        console.log('Fragment CompoundPath structure:', {
+          type: result.className,
+          hasChildren: !!(result as any).children,
+          childrenCount: (result as any).children?.length || 0,
+          resultProperties: Object.keys(result)
+        });
+        
+        // Debug each fragment part
+        fragmentPaths.forEach((part: any, index: number) => {
+          console.log(`Fragment part ${index + 1}:`, {
+            bounds: part.bounds,
+            area: Math.abs(part.area || 0),
+            isEmpty: part.isEmpty(),
+            pathDataLength: part.pathData?.length || 0,
+            pathPreview: part.pathData?.substring(0, 50) + '...'
+          });
+        });
+        
+        if (fragmentPaths.length > 1) {
+          // Multiple parts - create group (same logic as union operation)
+          const fragmentChildren: any[] = [];
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          
+          // Calculate overall bounds for all fragments
+          fragmentPaths.forEach((fragmentPath: any) => {
+            const bounds = fragmentPath.bounds;
+            minX = Math.min(minX, bounds.x);
+            minY = Math.min(minY, bounds.y);
+            maxX = Math.max(maxX, bounds.x + bounds.width);
+            maxY = Math.max(maxY, bounds.y + bounds.height);
+          });
+          
+          // Create child elements for each fragment part using user's fill color
+          console.log(`About to create ${fragmentPaths.length} fragment children`);
+          fragmentPaths.forEach((fragmentPath: any, index: number) => {
+            const bounds = fragmentPath.bounds;
+            
+            // Normalize path to start from 0,0
+            const tempPath = fragmentPath.clone();
+            tempPath.translate(new paper.Point(-bounds.x, -bounds.y));
+            const normalizedPath = tempPath.pathData;
+            
+            const fragmentShapePath = generateShapePath(
+              normalizedPath,
+              fillConfig, // Use user's fill config
+              strokeConfig
+            );
+            
+            // Calculate relative position within the group
+            const relativeLeft = bounds.x - minX;
+            const relativeTop = bounds.y - minY;
+            
+            // Clamp dimensions and positions to Canva's limits
+            const clampedWidth = Math.min(Math.max(Math.ceil(bounds.width), 1), 32767);
+            const clampedHeight = Math.min(Math.max(Math.ceil(bounds.height), 1), 32767);
+            const clampedRelativeTop = Math.max(-32768, Math.min(32767, Math.floor(relativeTop)));
+            const clampedRelativeLeft = Math.max(-32768, Math.min(32767, Math.floor(relativeLeft)));
+            
+            fragmentChildren.push({
+              type: "shape",
+              paths: [fragmentShapePath],
+              viewBox: {
+                top: 0,
+                left: 0,
+                width: clampedWidth,
+                height: clampedHeight
+              },
+              width: clampedWidth,
+              height: clampedHeight,
+              top: clampedRelativeTop,
+              left: clampedRelativeLeft
+            });
+            
+            console.log(`Fragment part ${index + 1}:`, {
+              bounds: bounds,
+              relativeTo: { left: relativeLeft, top: relativeTop },
+              clampedSize: { width: clampedWidth, height: clampedHeight }
+            });
+          });
+          
+          // Create the group with all fragment parts
+          console.log(`Creating group with ${fragmentChildren.length} fragment children from ${fragmentPaths.length} fragmentPaths`);
+          await addElementAtPoint({
+            type: "group",
+            children: fragmentChildren
+          });
+          
+          console.log(`Successfully created fragment group with ${fragmentChildren.length} children from ${fragmentPaths.length} fragmentPaths`);
+          console.log('=== FRAGMENT OPERATION COMPLETED - EXITING EARLY ===');
+          return; // Exit early for fragment operation
+        } else if (fragmentPaths.length === 1) {
+          // Single part - create single shape
+          const singlePath = fragmentPaths[0];
+          const pathData = singlePath.pathData;
+          
+          const singleShapePath = generateShapePath(
+            pathData,
+            fillConfig,
+            strokeConfig
+          );
+          
+          const bounds = singlePath.bounds;
+          const singleViewBox = {
+            top: Math.max(-32768, Math.min(32767, Math.floor(bounds.y))),
+            left: Math.max(-32768, Math.min(32767, Math.floor(bounds.x))),
+            width: Math.min(Math.max(Math.ceil(bounds.width), 1), 32767),
+            height: Math.min(Math.max(Math.ceil(bounds.height), 1), 32767)
+          };
+          
+          await addElementAtPoint({
+            type: "shape",
+            paths: [singleShapePath],
+            viewBox: singleViewBox
+          });
+          
+          console.log('Successfully created single fragment shape');
+          return; // Exit early for fragment operation
+        }
+      }
+
+      // Check if Union or Exclude operation resulted in multiple separate shapes
       const originalMoveCommands = (result.pathData.match(/[Mm]/g) || []).length;
-      if (operation === 'union' && originalMoveCommands > 1) {
-        console.log(`Union operation with ${originalMoveCommands} separate shapes - creating group with multiple shapes`);
+      if ((operation === 'union' || operation === 'exclude') && originalMoveCommands > 1) {
+        console.log(`${operation} operation with ${originalMoveCommands} separate shapes - creating group with multiple shapes`);
         
         // Split the original path data into separate paths
         const pathParts = result.pathData.split(/(?=[Mm])/).filter(part => part.trim().length > 5);
@@ -1266,7 +1666,7 @@ const BooleanOperations: React.FC = () => {
           children: children
         });
         
-        console.log(`Successfully created group with ${pathParts.length} shapes for union operation`);
+        console.log(`Successfully created group with ${pathParts.length} shapes for ${operation} operation`);
       } else {
         // Single shape - use existing logic
         await addElementAtPoint({
@@ -1508,6 +1908,8 @@ const BooleanOperations: React.FC = () => {
       case 'union': return 'Union';
       case 'intersect': return 'Intersect';
       case 'subtract': return 'Subtract';
+      case 'exclude': return 'Exclude';
+      case 'fragment': return 'Fragment';
       default: return op;
     }
   };
@@ -1641,7 +2043,9 @@ const BooleanOperations: React.FC = () => {
                 options={[
                   { value: 'union', label: 'Union' },
                   { value: 'intersect', label: 'Intersect' },
-                  { value: 'subtract', label: 'Subtract' }
+                  { value: 'subtract', label: 'Subtract' },
+                  { value: 'exclude', label: 'Exclude' },
+                  { value: 'fragment', label: 'Fragment' }
                 ]}
               />
               
